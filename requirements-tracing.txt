@@ -1,0 +1,28 @@
+# OpenTelemetry and Distributed Tracing Requirements
+# These should be added to requirements.txt or installed separately
+
+# OpenTelemetry Core
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+
+# OpenTelemetry Exporters
+opentelemetry-exporter-otlp-proto-grpc>=0.41b0
+opentelemetry-exporter-otlp-proto-http>=0.41b0
+
+# OpenTelemetry Instrumentation Packages
+opentelemetry-instrumentation>=0.41b0
+opentelemetry-instrumentation-aiohttp-client>=0.41b0
+opentelemetry-instrumentation-requests>=0.41b0
+opentelemetry-instrumentation-sqlalchemy>=0.41b0
+opentelemetry-instrumentation-logging>=0.41b0
+opentelemetry-instrumentation-asyncpg>=0.41b0
+
+# OpenTelemetry Semantic Conventions
+opentelemetry-semantic-conventions>=0.41b0
+
+# For Jaeger-specific features (optional)
+jaeger-client>=4.8.0
+jaeger-exporter>=0.7.0
+
+# For metrics and monitoring
+prometheus-client>=0.17.0
