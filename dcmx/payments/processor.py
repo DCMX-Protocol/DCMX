@@ -17,13 +17,44 @@ Handles:
 import logging
 import hmac
 import hashlib
+import uuid
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple
 from datetime import datetime, timedelta
 import json
 
+from web3 import Web3
+from web3.exceptions import TransactionNotFound, ContractLogicError
+
 logger = logging.getLogger(__name__)
+
+ERC20_ABI = [
+    {
+        "constant": True,
+        "inputs": [{"name": "_owner", "type": "address"}],
+        "name": "balanceOf",
+        "outputs": [{"name": "balance", "type": "uint256"}],
+        "type": "function"
+    },
+    {
+        "constant": False,
+        "inputs": [
+            {"name": "_to", "type": "address"},
+            {"name": "_value", "type": "uint256"}
+        ],
+        "name": "transfer",
+        "outputs": [{"name": "", "type": "bool"}],
+        "type": "function"
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "decimals",
+        "outputs": [{"name": "", "type": "uint8"}],
+        "type": "function"
+    }
+]
 
 
 class PaymentProcessor(Enum):
