@@ -265,16 +265,20 @@ class OFACChecker:
         """Build search indexes for fast lookup."""
         self.bloom_filter.clear()
         self.names_index.clear()
-        
+
+        # Add all addresses from crypto_addresses set to bloom filter
+        for addr in self.crypto_addresses:
+            self.bloom_filter.add(addr.lower())
+
         for uid, entry in self.sdn_entries.items():
             for addr in entry.crypto_addresses:
                 self.bloom_filter.add(addr.lower())
-            
+
             normalized = self._normalize_name(entry.name)
             if normalized not in self.names_index:
                 self.names_index[normalized] = []
             self.names_index[normalized].append(uid)
-            
+
             for alias in entry.aliases:
                 normalized_alias = self._normalize_name(alias)
                 if normalized_alias not in self.names_index:
@@ -325,7 +329,7 @@ class OFACChecker:
             self.CACHE_DIR.mkdir(parents=True, exist_ok=True)
             
             cache_data = {
-                'timestamp': datetime.now().isoformat(),
+                'timestamp': (self.last_update or datetime.now()).isoformat(),
                 'entries': {
                     uid: {
                         'uid': entry.uid,

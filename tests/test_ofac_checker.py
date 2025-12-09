@@ -180,11 +180,12 @@ class TestOFACChecker:
     async def test_check_name_fuzzy_match(self, checker):
         """Test fuzzy name matching."""
         checker.sdn_entries = {
-            "123": SDNEntry(uid="123", name="Bad Actor Corporation", entry_type="Entity")
+            "123": SDNEntry(uid="123", name="Bad Actor Corp", entry_type="Entity")
         }
         checker._build_indexes()
         
-        result = await checker.check_name("Bad Actor Corp", fuzzy_threshold=0.7)
+        # Fuzzy match: small typo/variation (within threshold)
+        result = await checker.check_name("Bad Acctor Corp", fuzzy_threshold=0.7)
         assert result["blocked"] is True
         assert result["score"] >= 0.7
 

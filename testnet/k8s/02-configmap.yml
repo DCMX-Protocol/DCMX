@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dcmx-config
+  namespace: dcmx-testnet
+data:
+  DCMX_LOG_LEVEL: "INFO"
+  DCMX_MAX_PEERS: "50"
+  DCMX_PEER_TIMEOUT: "300"
+  COMPLIANCE_ENABLED: "true"
+  COMPLIANCE_KYC_ENABLED: "true"
+  COMPLIANCE_OFAC_ENABLED: "true"
+  COMPLIANCE_OFAC_UPDATE_FREQ: "7d"
+  DATABASE_URL: "postgresql://compliance:password@postgres-service:5432/dcmx_compliance"
+  REDIS_URL: "redis://redis-service:6379"
+  PROMETHEUS_PORT: "9090"
+  FEATURE_AUDIO_WATERMARKING: "true"
+  FEATURE_ZK_PROOFS: "true"
+  FEATURE_LORA_MESH: "false"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dcmx-secrets
+  namespace: dcmx-testnet
+type: Opaque
+stringData:
+  ETHEREUM_RPC_URL: "https://sepolia.infura.io/v3/YOUR_KEY"
+  PRIVATE_KEY: "YOUR_PRIVATE_KEY"
+  POSTGRES_PASSWORD: "password"
+  REDIS_PASSWORD: "password"

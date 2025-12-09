@@ -23,6 +23,7 @@ from dcmx.lora.zk_proofs import (
 from dcmx.lora.secure_messaging import (
     SecureLoRaMessaging, SecureMessage, PeerSecurityContext
 )
+from dcmx.lora.tls_transport import TLSTransport, TLSConfig
 
 logger = logging.getLogger(__name__)
 

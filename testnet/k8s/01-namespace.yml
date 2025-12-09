@@ -1,0 +1,10 @@
+# DCMX Kubernetes Deployment
+# Testnet configuration for Kubernetes clusters
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dcmx-testnet
+  labels:
+    name: dcmx-testnet
+    environment: testnet

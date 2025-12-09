@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dcmx-node
+  namespace: dcmx-testnet
+spec:
+  serviceName: dcmx-service
+  replicas: 3
+  selector:
+    matchLabels:
+      app: dcmx-node
+  template:
+    metadata:
+      labels:
+        app: dcmx-node
+    spec:
+      containers:
+      - name: dcmx
+        image: dcmx:testnet
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8001
+          name: http
+        env:
+        - name: DCMX_HOST
+          value: "0.0.0.0"
+        - name: DCMX_PORT
+          value: "8001"
+        - name: DCMX_STORAGE_PATH
+          value: "/var/lib/dcmx"
+        - name: DCMX_NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: DCMX_PEERS
+          value: "dcmx-node-0.dcmx-service:8001,dcmx-node-1.dcmx-service:8001,dcmx-node-2.dcmx-service:8001"
+        envFrom:
+        - configMapRef:
+            name: dcmx-config
+        - secretRef:
+            name: dcmx-secrets
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /peers
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        volumeMounts:
+        - name: storage
+          mountPath: /var/lib/dcmx
+  volumeClaimTemplates:
+  - metadata:
+      name: storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 5Gi

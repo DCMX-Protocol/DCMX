@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: compliance-monitor
+  namespace: dcmx-testnet
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: compliance-monitor
+  template:
+    metadata:
+      labels:
+        app: compliance-monitor
+    spec:
+      containers:
+      - name: compliance
+        image: dcmx:testnet-compliance
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 9001
+          name: http
+        env:
+        - name: COMPLIANCE_LOG_LEVEL
+          value: "INFO"
+        envFrom:
+        - configMapRef:
+            name: dcmx-config
+        - secretRef:
+            name: dcmx-secrets
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9001
+          initialDelaySeconds: 10
+          periodSeconds: 5

@@ -1,0 +1,17 @@
+# Legal document management
+Flask>=2.3.0
+Flask-CORS>=4.0.0
+
+# Report generation
+reportlab>=4.0.0
+pypdf>=3.0.0
+
+# Email delivery (for GDPR requests)
+python-dotenv>=1.0.0
+requests>=2.31.0
+
+# Data export
+pandas>=2.0.0
+
+# Cryptography
+cryptography>=41.0.0

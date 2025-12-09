@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dcmx-service
+  namespace: dcmx-testnet
+spec:
+  clusterIP: None
+  selector:
+    app: dcmx-node
+  ports:
+  - port: 8001
+    targetPort: 8001
+    name: http
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dcmx-lb
+  namespace: dcmx-testnet
+spec:
+  type: LoadBalancer
+  selector:
+    app: dcmx-node
+  ports:
+  - port: 8000
+    targetPort: 8001
+    name: http
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: compliance-service
+  namespace: dcmx-testnet
+spec:
+  selector:
+    app: compliance-monitor
+  ports:
+  - port: 9001
+    targetPort: 9001
+    name: http
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-service
+  namespace: dcmx-testnet
+spec:
+  selector:
+    app: prometheus
+  ports:
+  - port: 9090
+    targetPort: 9090
+    name: http
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+  namespace: dcmx-testnet
+spec:
+  selector:
+    app: grafana
+  ports:
+  - port: 3000
+    targetPort: 3000
+    name: http
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: dcmx-testnet
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+    name: postgres
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: dcmx-testnet
+spec:
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+    name: redis

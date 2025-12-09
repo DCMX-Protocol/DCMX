@@ -19,7 +19,7 @@ def orchestrator():
 
 @pytest.fixture
 def mock_blockchain_agent():
-    agent = MagicMock()
+    agent = AsyncMock()
     agent.mint_nft = AsyncMock(return_value="0xabc123")
     agent.distribute_rewards = AsyncMock(return_value="0xdef456")
     agent.store_audio_metadata = AsyncMock(return_value="0x789")
@@ -28,7 +28,7 @@ def mock_blockchain_agent():
 
 @pytest.fixture
 def mock_audio_agent():
-    agent = MagicMock()
+    agent = AsyncMock()
     agent.embed_watermark = AsyncMock(return_value=b"watermarked_audio")
     agent.generate_fingerprint = AsyncMock(return_value="fingerprint_hash")
     return agent
@@ -36,7 +36,7 @@ def mock_audio_agent():
 
 @pytest.fixture
 def mock_compliance_agent():
-    agent = MagicMock()
+    agent = AsyncMock()
     agent.verify_user = AsyncMock(return_value={"verified": True, "level": 2})
     agent.check_ofac = AsyncMock(return_value={"is_blocked": False})
     agent.is_kyc_verified = AsyncMock(return_value=True)
@@ -45,7 +45,7 @@ def mock_compliance_agent():
 
 @pytest.fixture
 def mock_lora_agent():
-    agent = MagicMock()
+    agent = AsyncMock()
     agent.get_bandwidth_stats = AsyncMock(return_value={
         "bytes_uploaded": 1000000,
         "uptime_seconds": 86400,
@@ -276,7 +276,7 @@ class TestAgentStatus:
         assert status[AgentType.BLOCKCHAIN].tasks_completed == 1
 
     async def test_status_updates_on_task_failure(self, orchestrator):
-        agent = MagicMock()
+        agent = AsyncMock()
         agent.failing_method = AsyncMock(side_effect=Exception("Test error"))
         await orchestrator.register_agent(AgentType.BLOCKCHAIN, agent)
         

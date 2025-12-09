@@ -1,0 +1,39 @@
+# Compliance Monitor Docker Image
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir \
+    aiohttp-cors \
+    sqlalchemy \
+    psycopg2-binary \
+    redis
+
+# Copy application
+COPY dcmx/ ./dcmx/
+COPY setup.py .
+
+# Install application
+RUN pip install --no-cache-dir -e .
+
+# Create directories
+RUN mkdir -p /var/lib/dcmx /var/log/dcmx
+
+# Expose compliance API port
+EXPOSE 9001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:9001/health || exit 1
+
+# Run compliance monitor
+CMD ["python", "-m", "dcmx.compliance.compliance_monitor"]

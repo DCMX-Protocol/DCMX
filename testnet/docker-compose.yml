@@ -1,0 +1,252 @@
+version: '3.8'
+
+services:
+  # DCMX Node 1
+  dcmx-node-1:
+    image: dcmx:testnet
+    build:
+      context: ..
+      dockerfile: testnet/Dockerfile
+    container_name: dcmx-node-1
+    environment:
+      DCMX_HOST: 0.0.0.0
+      DCMX_PORT: 8001
+      DCMX_STORAGE_PATH: /var/lib/dcmx
+      DCMX_LOG_LEVEL: INFO
+      DCMX_NODE_ID: node-1
+      DCMX_PEERS: dcmx-node-2:8002,dcmx-node-3:8003
+      ETHEREUM_RPC_URL: ${ETHEREUM_RPC_URL}
+      PRIVATE_KEY: ${PRIVATE_KEY}
+      COMPLIANCE_ENABLED: "true"
+      COMPLIANCE_KYC_ENABLED: "true"
+      COMPLIANCE_OFAC_ENABLED: "true"
+    ports:
+      - "8001:8001"
+    volumes:
+      - dcmx-node-1-storage:/var/lib/dcmx
+      - ./logs:/var/log/dcmx
+    networks:
+      - dcmx-testnet
+    depends_on:
+      - compliance-monitor
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # DCMX Node 2
+  dcmx-node-2:
+    image: dcmx:testnet
+    build:
+      context: ..
+      dockerfile: testnet/Dockerfile
+    container_name: dcmx-node-2
+    environment:
+      DCMX_HOST: 0.0.0.0
+      DCMX_PORT: 8002
+      DCMX_STORAGE_PATH: /var/lib/dcmx
+      DCMX_LOG_LEVEL: INFO
+      DCMX_NODE_ID: node-2
+      DCMX_PEERS: dcmx-node-1:8001,dcmx-node-3:8003
+      ETHEREUM_RPC_URL: ${ETHEREUM_RPC_URL}
+      PRIVATE_KEY: ${PRIVATE_KEY}
+      COMPLIANCE_ENABLED: "true"
+      COMPLIANCE_KYC_ENABLED: "true"
+      COMPLIANCE_OFAC_ENABLED: "true"
+    ports:
+      - "8002:8002"
+    volumes:
+      - dcmx-node-2-storage:/var/lib/dcmx
+      - ./logs:/var/log/dcmx
+    networks:
+      - dcmx-testnet
+    depends_on:
+      - compliance-monitor
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # DCMX Node 3
+  dcmx-node-3:
+    image: dcmx:testnet
+    build:
+      context: ..
+      dockerfile: testnet/Dockerfile
+    container_name: dcmx-node-3
+    environment:
+      DCMX_HOST: 0.0.0.0
+      DCMX_PORT: 8003
+      DCMX_STORAGE_PATH: /var/lib/dcmx
+      DCMX_LOG_LEVEL: INFO
+      DCMX_NODE_ID: node-3
+      DCMX_PEERS: dcmx-node-1:8001,dcmx-node-2:8002
+      ETHEREUM_RPC_URL: ${ETHEREUM_RPC_URL}
+      PRIVATE_KEY: ${PRIVATE_KEY}
+      COMPLIANCE_ENABLED: "true"
+      COMPLIANCE_KYC_ENABLED: "true"
+      COMPLIANCE_OFAC_ENABLED: "true"
+    ports:
+      - "8003:8003"
+    volumes:
+      - dcmx-node-3-storage:/var/lib/dcmx
+      - ./logs:/var/log/dcmx
+    networks:
+      - dcmx-testnet
+    depends_on:
+      - compliance-monitor
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Compliance Monitor Service
+  compliance-monitor:
+    image: dcmx:testnet
+    build:
+      context: ..
+      dockerfile: testnet/Dockerfile.compliance
+    container_name: dcmx-compliance-monitor
+    environment:
+      COMPLIANCE_LOG_LEVEL: INFO
+      COMPLIANCE_OFAC_UPDATE_FREQ: 7d
+      DATABASE_URL: postgresql://compliance:password@compliance-db:5432/dcmx_compliance
+      REDIS_URL: redis://compliance-cache:6379
+    ports:
+      - "9001:9001"  # Compliance API
+    volumes:
+      - ./logs:/var/log/dcmx
+    networks:
+      - dcmx-testnet
+    depends_on:
+      - compliance-db
+      - compliance-cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # PostgreSQL for Compliance Data
+  compliance-db:
+    image: postgres:15-alpine
+    container_name: dcmx-compliance-db
+    environment:
+      POSTGRES_USER: compliance
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: dcmx_compliance
+    volumes:
+      - compliance-db-data:/var/lib/postgresql/data
+      - ./init-compliance-db.sql:/docker-entrypoint-initdb.d/01-init.sql
+    networks:
+      - dcmx-testnet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U compliance"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis for Compliance Caching
+  compliance-cache:
+    image: redis:7-alpine
+    container_name: dcmx-compliance-cache
+    command: redis-server --appendonly yes
+    volumes:
+      - compliance-cache-data:/data
+    networks:
+      - dcmx-testnet
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Prometheus for Metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: dcmx-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    ports:
+      - "9090:9090"
+    networks:
+      - dcmx-testnet
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Grafana for Dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: dcmx-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    networks:
+      - dcmx-testnet
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Jaeger for Distributed Tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: dcmx-jaeger
+    ports:
+      - "6831:6831/udp"  # Jaeger agent
+      - "16686:16686"    # Jaeger UI
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    volumes:
+      - jaeger-data:/badger/data
+    networks:
+      - dcmx-testnet
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:14269/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  dcmx-node-1-storage:
+  dcmx-node-2-storage:
+  dcmx-node-3-storage:
+  compliance-db-data:
+  compliance-cache-data:
+  prometheus-data:
+  grafana-data:
+  jaeger-data:
+
+networks:
+  dcmx-testnet:
+    driver: bridge
