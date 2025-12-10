@@ -12,7 +12,7 @@ from typing import List
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from dcmx.legal.acceptance import AcceptanceTracker, DocumentType
+from dcmx.legal.acceptance import AcceptanceTracker
 from dcmx.tron.contracts import ContractManager
 from dcmx.tron.config import TronConfig
 from dcmx.tron import utils
