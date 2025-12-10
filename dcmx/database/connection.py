@@ -5,7 +5,7 @@ import os
 from contextlib import contextmanager
 from typing import Optional
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import NullPool, QueuePool
 
