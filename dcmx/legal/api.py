@@ -1,10 +1,12 @@
 """Flask API endpoints for legal documents."""
 
 import logging
+import os
 from flask import Blueprint, jsonify, request, render_template_string
 from datetime import datetime
 from pathlib import Path
 from functools import wraps
+from typing import Dict, Any
 
 from .validator import LegalDocumentValidator
 from .acceptance import AcceptanceTracker, DocumentType, AcceptanceRequirement
@@ -30,7 +32,7 @@ except FileNotFoundError:
 
 
 def require_admin(f):
-    """Decorator to require admin authentication."""
+    """Decorator to require admin authentication for async functions."""
     @wraps(f)
     async def decorated_function(*args, **kwargs):
         # Check for admin token in headers
@@ -42,7 +44,6 @@ def require_admin(f):
         # In production, validate token against secure storage
         # For now, we check against an environment variable or config
         # This is a basic implementation that should be enhanced
-        import os
         expected_token = os.environ.get('DCMX_ADMIN_TOKEN', 'dcmx-admin-dev-token')
         
         if admin_token != expected_token:
