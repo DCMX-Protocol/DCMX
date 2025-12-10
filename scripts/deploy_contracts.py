@@ -36,17 +36,33 @@ def deploy_contract(
         
     Returns:
         Deployed contract address
+    
+    Note:
+        This is a placeholder implementation. Actual deployment requires:
+        1. Compiling Solidity contracts to bytecode and ABI
+        2. Using tronpy.contract.Contract.deploy() or TronGrid API
+        3. Proper transaction signing and broadcasting
+        
+        To implement:
+        - Use solcx to compile contracts
+        - Load compiled bytecode and ABI
+        - Call client.deploy_contract() with proper parameters
+        - Wait for transaction confirmation
+        
+        Example:
+            from solcx import compile_files
+            compiled = compile_files(['DCMXToken.sol'])
+            bytecode = compiled['DCMXToken']['bin']
+            abi = compiled['DCMXToken']['abi']
+            # Deploy using tronpy
     """
     logger.info(f"Deploying {contract_name}...")
     
-    # For this example, we assume contracts are already compiled
-    # In production, you'd use solcx to compile or load compiled ABIs
-    
-    # This is a placeholder - actual deployment would use tronpy's contract deployment
-    # contract_address = client.deploy_contract(bytecode, abi, *constructor_args)
-    
-    logger.warning(f"{contract_name} deployment not implemented - requires compiled contracts")
-    return "DEPLOYMENT_PLACEHOLDER"
+    logger.warning(
+        f"{contract_name} deployment placeholder - implement with compiled contracts. "
+        f"See function docstring for implementation notes."
+    )
+    return f"PLACEHOLDER_{contract_name.upper()}"
 
 
 def main():
@@ -133,14 +149,22 @@ def main():
         # Configure contracts
         logger.info("\n=== Configuring Contracts ===")
         
-        # Add RewardVault as minter for DCMXToken
+        # CRITICAL: Add RewardVault as minter for DCMXToken
         logger.info("Adding RewardVault as DCMXToken minter...")
+        logger.warning(
+            "IMPORTANT: After actual deployment, you MUST run:\n"
+            "  token.add_minter(reward_vault_address)\n"
+            "Otherwise reward claims will fail! This allows RewardVault to mint tokens."
+        )
+        
+        # TODO: Uncomment after implementing actual deployment
         # tx_hash = client.send_contract_transaction(
         #     dcmx_token,
         #     "addMinter",
         #     reward_vault
         # )
-        logger.info("RewardVault configured as minter")
+        # client.wait_for_transaction(tx_hash)
+        # logger.info("RewardVault configured as minter")
         
         # Save deployment info
         deployment_file = Path(__file__).parent.parent / "deployment.json"
