@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 
 from sqlalchemy import select, and_
 from sqlalchemy.exc import IntegrityError
