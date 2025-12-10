@@ -3,7 +3,7 @@
 import logging
 from typing import Optional, List, Dict, Any
 
-from fastapi import APIRouter, HTTPException, Body, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from dcmx.tron.contracts import ContractManager
