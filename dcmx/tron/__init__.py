@@ -15,7 +15,11 @@ from .contracts import (
     ComplianceRegistryContract,
     RewardVaultContract,
     RoyaltyDistributorContract,
+    ContractManager,
 )
+from .events import EventType, EventParser, BlockchainEvent
+from .indexer import BlockchainIndexer
+from . import utils
 
 __all__ = [
     "TronClient",
@@ -26,4 +30,10 @@ __all__ = [
     "ComplianceRegistryContract",
     "RewardVaultContract",
     "RoyaltyDistributorContract",
+    "ContractManager",
+    "EventType",
+    "EventParser",
+    "BlockchainEvent",
+    "BlockchainIndexer",
+    "utils",
 ]
