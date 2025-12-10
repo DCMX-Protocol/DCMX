@@ -12,7 +12,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dcmx.tron.client import TronClient
 from dcmx.tron.config import TronConfig
-from dcmx.tron import utils
 
 logging.basicConfig(
     level=logging.INFO,
