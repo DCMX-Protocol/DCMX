@@ -23,6 +23,11 @@ from dcmx.royalties import (
     SustainabilityEngine,
 )
 
+# Database integration
+from dcmx.database.database import get_db_manager, get_async_session
+from dcmx.database.dal import DataAccessLayer
+import os
+
 logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
@@ -47,11 +52,30 @@ advanced = AdvancedEconomicsEngine()
 pools = RevenuePoolManager()
 sustainability = SustainabilityEngine()
 
-# In-memory data store (replace with DB in production)
+# Database or in-memory storage
+USE_DATABASE = os.getenv("DCMX_USE_DATABASE", "true").lower() == "true"
+dal = DataAccessLayer() if USE_DATABASE else None
+
+# In-memory data store (fallback or when database disabled)
 wallets: Dict[str, Any] = {}
 nfts: Dict[str, Any] = {}
 user_votes: Dict[str, Any] = {}
 user_skips: Dict[str, Any] = {}
+
+# Initialize database on startup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database connection on startup."""
+    if USE_DATABASE:
+        try:
+            db_manager = get_db_manager()
+            await db_manager.initialize_async()
+            logger.info("Database initialized for API server")
+        except Exception as e:
+            logger.error(f"Failed to initialize database: {e}")
+            logger.warning("Falling back to in-memory storage")
+            global USE_DATABASE
+            USE_DATABASE = False
 
 
 # ============================================================================
@@ -64,31 +88,67 @@ async def create_wallet(
     username: str = Body(...),
 ):
     """Create or register a user wallet."""
-    if wallet_address in wallets:
-        raise HTTPException(status_code=400, detail="Wallet already exists")
-    
-    wallets[wallet_address] = {
-        "address": wallet_address,
-        "username": username,
-        "balance_dcmx": 0.0,
-        "created_at": datetime.utcnow().isoformat(),
-        "is_artist": False,
-    }
-    
-    logger.info(f"Wallet created: {wallet_address}")
-    return {
-        "success": True,
-        "wallet": wallets[wallet_address],
-    }
+    if USE_DATABASE:
+        async with get_async_session() as session:
+            try:
+                wallet = await dal.create_wallet(session, wallet_address, username)
+                return {
+                    "success": True,
+                    "wallet": {
+                        "address": wallet.address,
+                        "username": wallet.username,
+                        "balance_dcmx": float(wallet.balance_dcmx),
+                        "created_at": wallet.created_at.isoformat(),
+                        "is_artist": wallet.is_artist,
+                    }
+                }
+            except Exception as e:
+                logger.error(f"Database error creating wallet: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+    else:
+        # In-memory fallback
+        if wallet_address in wallets:
+            raise HTTPException(status_code=400, detail="Wallet already exists")
+        
+        wallets[wallet_address] = {
+            "address": wallet_address,
+            "username": username,
+            "balance_dcmx": 0.0,
+            "created_at": datetime.utcnow().isoformat(),
+            "is_artist": False,
+        }
+        
+        logger.info(f"Wallet created (in-memory): {wallet_address}")
+        return {
+            "success": True,
+            "wallet": wallets[wallet_address],
+        }
 
 
 @app.get("/api/v1/wallet/{wallet_address}")
 async def get_wallet(wallet_address: str):
     """Get wallet information."""
-    if wallet_address not in wallets:
-        raise HTTPException(status_code=404, detail="Wallet not found")
-    
-    return wallets[wallet_address]
+    if USE_DATABASE:
+        async with get_async_session() as session:
+            wallet = await dal.get_wallet(session, wallet_address)
+            if not wallet:
+                raise HTTPException(status_code=404, detail="Wallet not found")
+            
+            return {
+                "address": wallet.address,
+                "username": wallet.username,
+                "balance_dcmx": float(wallet.balance_dcmx),
+                "created_at": wallet.created_at.isoformat(),
+                "is_artist": wallet.is_artist,
+                "is_verified": wallet.is_verified,
+                "last_activity": wallet.last_activity.isoformat() if wallet.last_activity else None
+            }
+    else:
+        # In-memory fallback
+        if wallet_address not in wallets:
+            raise HTTPException(status_code=404, detail="Wallet not found")
+        
+        return wallets[wallet_address]
 
 
 @app.post("/api/v1/wallet/{wallet_address}/fund")
@@ -490,33 +550,45 @@ async def get_artist_analytics(artist_wallet: str):
 @app.get("/api/v1/user/{user_wallet}/profile")
 async def get_user_profile(user_wallet: str):
     """Get user profile and statistics."""
-    if user_wallet not in wallets:
-        raise HTTPException(status_code=404, detail="User wallet not found")
-    
-    # Calculate user stats
-    user_votes_list = [v for v in user_votes.values() if v["user"] == user_wallet]
-    user_skips_list = [s for s in user_skips.values() if s["user"] == user_wallet]
-    
-    likes_count = sum(1 for v in user_votes_list if v["preference"] == "like")
-    dislikes_count = sum(1 for v in user_votes_list if v["preference"] == "dislike")
-    total_rewards = sum(v["reward"] for v in user_votes_list)
-    total_charges = sum(s["charge"] for s in user_skips_list if s["charge"] < 0)
-    
-    return {
-        "wallet": user_wallet,
-        "username": wallets[user_wallet].get("username", "Unknown"),
-        "balance_dcmx": wallets[user_wallet]["balance_dcmx"],
-        "is_artist": wallets[user_wallet]["is_artist"],
-        "statistics": {
-            "votes_cast": len(user_votes_list),
-            "likes": likes_count,
-            "dislikes": dislikes_count,
-            "songs_skipped": len(user_skips_list),
-            "total_rewards_earned": total_rewards,
-            "total_skip_charges": abs(total_charges),
-            "net_earnings": total_rewards + total_charges,
+    if USE_DATABASE:
+        async with get_async_session() as session:
+            try:
+                profile = await dal.get_user_profile_stats(session, user_wallet)
+                return profile
+            except ValueError as e:
+                raise HTTPException(status_code=404, detail=str(e))
+            except Exception as e:
+                logger.error(f"Database error getting profile: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+    else:
+        # In-memory fallback
+        if user_wallet not in wallets:
+            raise HTTPException(status_code=404, detail="User wallet not found")
+        
+        # Calculate user stats
+        user_votes_list = [v for v in user_votes.values() if v["user"] == user_wallet]
+        user_skips_list = [s for s in user_skips.values() if s["user"] == user_wallet]
+        
+        likes_count = sum(1 for v in user_votes_list if v["preference"] == "like")
+        dislikes_count = sum(1 for v in user_votes_list if v["preference"] == "dislike")
+        total_rewards = sum(v["reward"] for v in user_votes_list)
+        total_charges = sum(s["charge"] for s in user_skips_list if s["charge"] < 0)
+        
+        return {
+            "wallet": user_wallet,
+            "username": wallets[user_wallet].get("username", "Unknown"),
+            "balance_dcmx": wallets[user_wallet]["balance_dcmx"],
+            "is_artist": wallets[user_wallet]["is_artist"],
+            "statistics": {
+                "votes_cast": len(user_votes_list),
+                "likes": likes_count,
+                "dislikes": dislikes_count,
+                "songs_skipped": len(user_skips_list),
+                "total_rewards_earned": total_rewards,
+                "total_skip_charges": abs(total_charges),
+                "net_earnings": total_rewards + total_charges,
+            }
         }
-    }
 
 
 @app.get("/api/v1/user/{user_wallet}/votes")
@@ -541,46 +613,81 @@ async def get_user_votes(user_wallet: str):
 @app.get("/api/v1/platform/stats")
 async def get_platform_stats():
     """Get platform-wide statistics."""
-    total_users = len(wallets)
-    total_artists = sum(1 for w in wallets.values() if w["is_artist"])
-    total_nfts = len(nfts)
-    total_votes = len(user_votes)
-    total_skips = len(user_skips)
-    
-    total_balance = sum(w["balance_dcmx"] for w in wallets.values())
-    total_listeners = sum(nft["listeners"] for nft in nfts.values())
-    total_likes = sum(nft["likes"] for nft in nfts.values())
-    total_dislikes = sum(nft["dislikes"] for nft in nfts.values())
-    
-    # Sustainability check
-    score, is_sustainable = sustainability.check_sustainability()
-    
-    return {
-        "users": {
-            "total": total_users,
-            "artists": total_artists,
-            "listeners": total_users - total_artists,
-        },
-        "content": {
-            "total_nfts": total_nfts,
-            "total_listeners": total_listeners,
-            "total_likes": total_likes,
-            "total_dislikes": total_dislikes,
-        },
-        "engagement": {
-            "total_votes": total_votes,
-            "total_skips": total_skips,
-            "like_dislike_ratio": f"{total_likes}:{total_dislikes}",
-        },
-        "economics": {
-            "total_platform_balance_dcmx": total_balance,
-            "avg_user_balance_dcmx": total_balance / total_users if total_users > 0 else 0,
-        },
-        "sustainability": {
-            "score": score,
-            "status": "sustainable" if is_sustainable else "at_risk",
+    if USE_DATABASE:
+        async with get_async_session() as session:
+            try:
+                stats = await dal.get_platform_stats(session)
+                
+                # Sustainability check
+                score, is_sustainable = sustainability.check_sustainability()
+                
+                return {
+                    "users": {
+                        "total": stats['total_users'],
+                        "artists": stats['total_artists'],
+                        "listeners": stats['total_users'] - stats['total_artists'],
+                    },
+                    "content": {
+                        "total_nfts": stats['total_nfts'],
+                    },
+                    "engagement": {
+                        "total_votes": stats['total_votes'],
+                        "total_skips": stats['total_skips'],
+                    },
+                    "economics": {
+                        "total_platform_balance_dcmx": stats['total_platform_balance_dcmx'],
+                        "avg_user_balance_dcmx": stats['total_platform_balance_dcmx'] / stats['total_users'] if stats['total_users'] > 0 else 0,
+                    },
+                    "sustainability": {
+                        "score": score,
+                        "status": "sustainable" if is_sustainable else "at_risk",
+                    }
+                }
+            except Exception as e:
+                logger.error(f"Database error getting platform stats: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+    else:
+        # In-memory fallback
+        total_users = len(wallets)
+        total_artists = sum(1 for w in wallets.values() if w["is_artist"])
+        total_nfts = len(nfts)
+        total_votes = len(user_votes)
+        total_skips = len(user_skips)
+        
+        total_balance = sum(w["balance_dcmx"] for w in wallets.values())
+        total_listeners = sum(nft["listeners"] for nft in nfts.values())
+        total_likes = sum(nft["likes"] for nft in nfts.values())
+        total_dislikes = sum(nft["dislikes"] for nft in nfts.values())
+        
+        # Sustainability check
+        score, is_sustainable = sustainability.check_sustainability()
+        
+        return {
+            "users": {
+                "total": total_users,
+                "artists": total_artists,
+                "listeners": total_users - total_artists,
+            },
+            "content": {
+                "total_nfts": total_nfts,
+                "total_listeners": total_listeners,
+                "total_likes": total_likes,
+                "total_dislikes": total_dislikes,
+            },
+            "engagement": {
+                "total_votes": total_votes,
+                "total_skips": total_skips,
+                "like_dislike_ratio": f"{total_likes}:{total_dislikes}",
+            },
+            "economics": {
+                "total_platform_balance_dcmx": total_balance,
+                "avg_user_balance_dcmx": total_balance / total_users if total_users > 0 else 0,
+            },
+            "sustainability": {
+                "score": score,
+                "status": "sustainable" if is_sustainable else "at_risk",
+            }
         }
-    }
 
 
 @app.get("/api/v1/platform/leaderboard/artists")
