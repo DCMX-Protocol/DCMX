@@ -42,12 +42,16 @@ def require_admin(f):
             return jsonify({'error': 'Admin authentication required'}), 401
         
         # In production, validate token against secure storage
-        # For now, we check against an environment variable or config
-        # This is a basic implementation that should be enhanced
-        expected_token = os.environ.get('DCMX_ADMIN_TOKEN', 'dcmx-admin-dev-token')
+        # Fail securely: no default token, must be explicitly set
+        expected_token = os.environ.get('DCMX_ADMIN_TOKEN')
+        
+        if not expected_token:
+            logger.error("DCMX_ADMIN_TOKEN environment variable not set")
+            return jsonify({'error': 'Admin authentication not configured'}), 500
         
         if admin_token != expected_token:
-            logger.warning(f"Invalid admin token attempt from {request.remote_addr}")
+            # Use generic logging message to prevent information leakage
+            logger.warning("Invalid admin authentication attempt")
             return jsonify({'error': 'Invalid admin credentials'}), 403
         
         return await f(*args, **kwargs)
@@ -68,10 +72,21 @@ async def send_user_data_export(user_id: str, acceptances: list) -> bool:
     """
     try:
         # Prepare data export
+        # Convert all acceptances to dicts for consistent serialization
+        serialized_acceptances = []
+        for acc in acceptances:
+            if hasattr(acc, 'to_dict'):
+                serialized_acceptances.append(acc.to_dict())
+            elif isinstance(acc, dict):
+                serialized_acceptances.append(acc)
+            else:
+                logger.warning(f"Unexpected acceptance type: {type(acc)}")
+                continue
+        
         export_data = {
             'user_id': user_id,
             'export_date': datetime.now().isoformat(),
-            'acceptances': [acc.to_dict() if hasattr(acc, 'to_dict') else acc for acc in acceptances],
+            'acceptances': serialized_acceptances,
             'note': 'Full data export includes all legal acceptances and blockchain transactions.'
         }
         
