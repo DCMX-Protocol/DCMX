@@ -1,7 +1,7 @@
 """Web3 blockchain endpoints for DCMX API."""
 
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
