@@ -3,7 +3,7 @@
 from datetime import datetime
 from sqlalchemy import (
     Column, String, Integer, BigInteger, Boolean, DateTime,
-    Text, JSON, Index, ForeignKey, Numeric
+    Index, Numeric
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects.postgresql import JSONB
