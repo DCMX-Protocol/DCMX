@@ -40,6 +40,7 @@ def mock_compliance_agent():
     agent.verify_user = AsyncMock(return_value={"verified": True, "level": 2})
     agent.check_ofac = AsyncMock(return_value={"is_blocked": False})
     agent.is_kyc_verified = AsyncMock(return_value=True)
+    agent.check_wallet = AsyncMock(return_value={"approved": True})
     return agent
 
 
