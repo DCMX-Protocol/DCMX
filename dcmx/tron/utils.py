@@ -2,7 +2,7 @@
 
 import hashlib
 import logging
-from typing import Optional, Any
+from typing import Any
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
