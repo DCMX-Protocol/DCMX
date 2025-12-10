@@ -206,8 +206,6 @@ class TronClient:
             List of events
         """
         try:
-            contract = self.get_contract(contract_address)
-            
             # Get events (tronpy doesn't have direct event querying,
             # would need to query transactions and parse logs)
             # This is a placeholder for the indexer to implement
