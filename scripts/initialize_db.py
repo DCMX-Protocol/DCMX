@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dcmx.database.connection import DatabaseConnection
-from dcmx.database.models import Base, create_additional_indexes
+from dcmx.database.models import create_additional_indexes
 
 logging.basicConfig(
     level=logging.INFO,
