@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 from typing import Optional, Dict, Any
 
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from .client import TronClient
