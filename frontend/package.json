@@ -31,7 +31,8 @@
     "wavesurfer.js": "^7.5.0",
     "framer-motion": "^10.16.16",
     "date-fns": "^3.0.0",
-    "lucide-react": "^0.300.0"
+    "lucide-react": "^0.300.0",
+    "jose": "^5.1.3"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.15.0",
