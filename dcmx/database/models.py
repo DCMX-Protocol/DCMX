@@ -18,12 +18,51 @@ from sqlalchemy import (
     Column, String, Integer, Float, Boolean, DateTime, Text, JSON, ForeignKey,
     Enum as SQLEnum, Index, UniqueConstraint, CheckConstraint, DECIMAL, BigInteger
 )
-from sqlalchemy.dialects.postgresql import UUID, INET, ARRAY
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID, INET, ARRAY as PG_ARRAY
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy.types import TypeDecorator
 
 Base = declarative_base()
+
+
+# Custom UUID type that works with both PostgreSQL and SQLite
+class UUID(TypeDecorator):
+    """Platform-independent UUID type."""
+    impl = String(36)
+    cache_ok = True
+    
+    def __init__(self, *args, **kwargs):
+        # Remove as_uuid argument if present (not supported by base impl)
+        kwargs.pop('as_uuid', None)
+        super().__init__(*args, **kwargs)
+    
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(PG_UUID(as_uuid=True))
+        else:
+            return dialect.type_descriptor(String(36))
+    
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        elif dialect.name == 'postgresql':
+            return value
+        else:
+            if isinstance(value, uuid.UUID):
+                return str(value)
+            return value
+    
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        elif dialect.name == 'postgresql':
+            return value
+        else:
+            if isinstance(value, str):
+                return uuid.UUID(value)
+            return value
 
 
 # ============================================================================
@@ -567,8 +606,8 @@ class Transaction(Base):
     blockchain_hash = Column(String(66), index=True)
     blockchain = Column(String(20), default="polygon")
     
-    # Metadata
-    metadata = Column(JSON)
+    # Additional data (renamed from 'metadata' to avoid SQLAlchemy conflict)
+    transaction_metadata = Column(JSON)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
@@ -646,9 +685,9 @@ class BlockchainTransaction(Base):
     contract_address = Column(String(42))
     input_data = Column(Text)
     
-    # Metadata
+    # Additional data
     transaction_type = Column(String(50))  # transfer, mint, approve, etc.
-    metadata = Column(JSON)
+    additional_data = Column(JSON)  # Renamed from 'metadata' to avoid SQLAlchemy conflict
     
     # Link to platform transaction
     platform_transaction_id = Column(UUID(as_uuid=True), ForeignKey("transactions.id"))
@@ -728,7 +767,7 @@ class MultisigProposal(Base):
     # Voting
     required_signatures = Column(Integer, nullable=False)
     current_signatures = Column(Integer, default=0)
-    signers = Column(ARRAY(String(42)))  # Array of wallet addresses
+    signers = Column(JSON)  # Array of wallet addresses (JSON for SQLite compatibility)
     
     # Status
     status = Column(String(20), default="pending", index=True)  # pending, approved, rejected, executed

@@ -44,15 +44,24 @@ class DatabaseManager:
             return
         
         # Create engine with connection pooling
-        self.sync_engine = create_engine(
-            self.config.get_sync_url(),
-            poolclass=QueuePool if not self.config.use_sqlite else NullPool,
-            pool_size=self.config.pool_size if not self.config.use_sqlite else 0,
-            max_overflow=self.config.max_overflow if not self.config.use_sqlite else 0,
-            pool_timeout=self.config.pool_timeout,
-            pool_recycle=self.config.pool_recycle,
-            echo=False,  # Set to True for SQL debugging
-        )
+        if self.config.use_sqlite:
+            # SQLite-specific configuration
+            self.sync_engine = create_engine(
+                self.config.get_sync_url(),
+                poolclass=NullPool,
+                echo=False,  # Set to True for SQL debugging
+            )
+        else:
+            # PostgreSQL configuration
+            self.sync_engine = create_engine(
+                self.config.get_sync_url(),
+                poolclass=QueuePool,
+                pool_size=self.config.pool_size,
+                max_overflow=self.config.max_overflow,
+                pool_timeout=self.config.pool_timeout,
+                pool_recycle=self.config.pool_recycle,
+                echo=False,  # Set to True for SQL debugging
+            )
         
         # Create session maker
         self.SyncSessionLocal = sessionmaker(
@@ -70,13 +79,22 @@ class DatabaseManager:
             return
         
         # Create async engine
-        self.async_engine = create_async_engine(
-            self.config.get_async_url(),
-            poolclass=QueuePool if not self.config.use_sqlite else NullPool,
-            pool_size=self.config.async_pool_size if not self.config.use_sqlite else 0,
-            max_overflow=self.config.async_max_overflow if not self.config.use_sqlite else 0,
-            echo=False,  # Set to True for SQL debugging
-        )
+        if self.config.use_sqlite:
+            # SQLite-specific configuration
+            self.async_engine = create_async_engine(
+                self.config.get_async_url(),
+                poolclass=NullPool,
+                echo=False,  # Set to True for SQL debugging
+            )
+        else:
+            # PostgreSQL configuration
+            self.async_engine = create_async_engine(
+                self.config.get_async_url(),
+                poolclass=QueuePool,
+                pool_size=self.config.async_pool_size,
+                max_overflow=self.config.async_max_overflow,
+                echo=False,  # Set to True for SQL debugging
+            )
         
         # Create async session maker
         self.AsyncSessionLocal = async_sessionmaker(
