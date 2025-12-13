@@ -41,6 +41,10 @@ py-solc-x>=2.0.0
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 
+# Payment integrations (Magic Eden + MIM)
+stripe>=7.0.0  # Credit card payments
+requests>=2.31.0  # HTTP client for payment APIs
+
 # Testing
 pytest>=7.4.0
 pytest-asyncio>=0.21.0

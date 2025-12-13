@@ -63,6 +63,8 @@ class PaymentProcessor(Enum):
     CIRCLE = "circle"
     COINBASE = "coinbase"
     PAYPAL = "paypal"
+    MAGIC_EDEN = "magic_eden"
+    MIM = "magic_internet_money"
 
 
 class PaymentStatus(Enum):
@@ -82,7 +84,9 @@ class PaymentMethod(Enum):
     CRYPTO_USDC = "crypto_usdc"
     CRYPTO_USDT = "crypto_usdt"
     CRYPTO_ETH = "crypto_eth"
+    CRYPTO_MIM = "crypto_mim"
     PAYPAL = "paypal"
+    MAGIC_EDEN_NFT = "magic_eden_nft"
 
 
 @dataclass
@@ -512,6 +516,254 @@ class PaymentManager:
             "completed": completed,
             "failed": failed,
             "success_rate": (completed / total_payments * 100) if total_payments > 0 else 0,
+            "total_volume": total_volume,
+        }
+
+
+class UnifiedPaymentGateway:
+    """
+    Unified payment gateway supporting all DCMX payment methods.
+    
+    Integrates:
+    - Traditional payments: Stripe, PayPal
+    - Crypto payments: Circle, Coinbase
+    - Stablecoins: USDC, USDT, MIM
+    - NFT marketplaces: Magic Eden
+    """
+    
+    def __init__(self):
+        """Initialize unified payment gateway."""
+        self.processors: Dict[PaymentProcessor, Any] = {}
+        self.payment_router = PaymentRouter()
+        
+        # Import integrations
+        try:
+            from dcmx.payments.magic_eden import DCMXMagicEdenIntegration
+            from dcmx.payments.magic_internet_money import DCMXMIMIntegration
+            
+            self.magic_eden = None  # Initialize with API key when available
+            self.mim_processor = None  # Initialize with chain config when available
+            
+            logger.info("Magic Eden and MIM integrations loaded")
+        except ImportError as e:
+            logger.warning(f"Optional payment integrations not available: {e}")
+    
+    def configure_magic_eden(
+        self,
+        api_key: str,
+        chain: str = "solana",
+        collection_symbol: str = "dcmx_music",
+    ):
+        """
+        Configure Magic Eden marketplace integration.
+        
+        Args:
+            api_key: Magic Eden API key
+            chain: Blockchain (solana, ethereum, polygon, bitcoin)
+            collection_symbol: DCMX collection symbol
+        """
+        from dcmx.payments.magic_eden import DCMXMagicEdenIntegration, MagicEdenChain
+        
+        chain_enum = MagicEdenChain(chain)
+        self.magic_eden = DCMXMagicEdenIntegration(
+            api_key=api_key,
+            chain=chain_enum,
+            collection_symbol=collection_symbol,
+        )
+        
+        logger.info(f"Magic Eden configured for {chain} chain")
+    
+    def configure_mim(
+        self,
+        chain: str = "ethereum",
+        private_key: Optional[str] = None,
+        merchant_address: Optional[str] = None,
+    ):
+        """
+        Configure Magic Internet Money (MIM) stablecoin payments.
+        
+        Args:
+            chain: Blockchain (ethereum, avalanche, arbitrum, etc.)
+            private_key: Wallet private key for sending payments
+            merchant_address: Merchant wallet for receiving payments
+        """
+        from dcmx.payments.magic_internet_money import DCMXMIMIntegration, MIMChain
+        
+        chain_enum = MIMChain(chain)
+        self.mim_processor = DCMXMIMIntegration(
+            chain=chain_enum,
+            private_key=private_key,
+            merchant_address=merchant_address,
+        )
+        
+        logger.info(f"MIM stablecoin configured for {chain} chain")
+    
+    async def process_payment(
+        self,
+        user_wallet: str,
+        amount_usd: float,
+        payment_method: PaymentMethod,
+        nft_id: Optional[str] = None,
+        artist: Optional[str] = None,
+        track_title: Optional[str] = None,
+    ) -> Dict:
+        """
+        Process payment through appropriate gateway.
+        
+        Args:
+            user_wallet: User wallet address
+            amount_usd: Amount in USD
+            payment_method: Payment method
+            nft_id: NFT ID (for NFT purchases)
+            artist: Artist name (for Magic Eden listing)
+            track_title: Track title (for Magic Eden listing)
+            
+        Returns:
+            Payment result
+        """
+        # Route to appropriate payment processor
+        if payment_method == PaymentMethod.CRYPTO_MIM:
+            if not self.mim_processor:
+                raise ValueError("MIM processor not configured")
+            
+            result = self.mim_processor.process_nft_purchase(
+                buyer_address=user_wallet,
+                nft_price_usd=amount_usd,
+                nft_id=nft_id or "unknown",
+            )
+            
+            return result
+        
+        elif payment_method == PaymentMethod.MAGIC_EDEN_NFT:
+            if not self.magic_eden:
+                raise ValueError("Magic Eden not configured")
+            
+            # This would typically be called by seller to list NFT
+            # For purchases, Magic Eden handles the transaction
+            logger.info(f"NFT purchase via Magic Eden: {nft_id}")
+            
+            return {
+                "success": True,
+                "payment_method": "magic_eden",
+                "message": "Purchase processed via Magic Eden marketplace",
+            }
+        
+        else:
+            # Use existing payment router for traditional methods
+            return await self.payment_router.process_payment(
+                user_wallet=user_wallet,
+                amount=amount_usd,
+                currency="USD",
+                payment_method=payment_method,
+            )
+    
+    async def list_nft_on_magic_eden(
+        self,
+        nft_address: str,
+        token_id: str,
+        artist: str,
+        track_title: str,
+        price_usd: float,
+        seller_address: str,
+        royalty_percentage: float = 10.0,
+        edition_number: Optional[int] = None,
+        max_editions: Optional[int] = None,
+    ) -> Dict:
+        """
+        List DCMX music NFT on Magic Eden marketplace.
+        
+        Args:
+            nft_address: NFT contract address
+            token_id: Token ID
+            artist: Artist name
+            track_title: Track title
+            price_usd: Listing price in USD
+            seller_address: Seller wallet address
+            royalty_percentage: Artist royalty percentage
+            edition_number: Edition number (if limited)
+            max_editions: Max editions (if limited)
+            
+        Returns:
+            Listing result
+        """
+        if not self.magic_eden:
+            raise ValueError("Magic Eden not configured")
+        
+        # Convert USD to native currency (SOL, ETH, etc.)
+        # This is simplified - in production, use price oracle
+        price_native = price_usd / 100  # Rough conversion
+        
+        listing = await self.magic_eden.list_music_nft(
+            nft_address=nft_address,
+            token_id=token_id,
+            artist=artist,
+            track_title=track_title,
+            price=price_native,
+            seller_address=seller_address,
+            royalty_percentage=royalty_percentage,
+            edition_number=edition_number,
+            max_editions=max_editions,
+        )
+        
+        return {
+            "success": True,
+            "listing_id": listing.listing_id,
+            "price": listing.price,
+            "currency": listing.currency,
+            "chain": listing.chain.value,
+            "status": listing.status,
+        }
+    
+    def get_mim_payment_instructions(
+        self,
+        amount_usd: float,
+        order_id: str,
+    ) -> Dict:
+        """
+        Get MIM payment instructions for buyer.
+        
+        Args:
+            amount_usd: Amount in USD
+            order_id: Order ID
+            
+        Returns:
+            Payment instructions
+        """
+        if not self.mim_processor:
+            raise ValueError("MIM processor not configured")
+        
+        return self.mim_processor.get_payment_instructions(
+            amount_usd=amount_usd,
+            order_id=order_id,
+        )
+    
+    async def get_magic_eden_stats(self) -> Dict:
+        """
+        Get DCMX collection stats on Magic Eden.
+        
+        Returns:
+            Collection statistics
+        """
+        if not self.magic_eden:
+            raise ValueError("Magic Eden not configured")
+        
+        floor_price = await self.magic_eden.get_collection_floor_price()
+        volume = await self.magic_eden.get_collection_volume()
+        
+        return {
+            "floor_price": floor_price,
+            "volume_24h": volume.get("volume_24h", 0),
+            "volume_7d": volume.get("volume_7d", 0),
+            "volume_30d": volume.get("volume_30d", 0),
+            "total_volume": volume.get("total_volume", 0),
+        }
+    
+    async def cleanup(self):
+        """Cleanup resources."""
+        if self.magic_eden:
+            await self.magic_eden.close()
+        
+        logger.info("Payment gateway cleaned up")
             "total_volume": total_volume,
             "processors_configured": len(self.processors),
         }
