@@ -3,10 +3,11 @@
 import logging
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Query, Depends, Header
+from pydantic import BaseModel, validator, Field
 
 from dcmx.tron.contracts import ContractManager
+from dcmx.security.manager import JWTManager, SecurityLevel
 from dcmx.tron.config import TronConfig
 from dcmx.tron import utils
 from dcmx.database.connection import get_database
@@ -19,6 +20,35 @@ web3_router = APIRouter(prefix="/api/v1", tags=["web3"])
 
 # Initialize contract manager (lazy loading)
 _contract_manager: Optional[ContractManager] = None
+_jwt_manager: Optional[JWTManager] = None
+
+def get_jwt_manager() -> JWTManager:
+    """Get or initialize JWT manager."""
+    global _jwt_manager
+    if _jwt_manager is None:
+        import os
+        secret_key = os.getenv('JWT_SECRET_KEY', 'CHANGE_THIS_IN_PRODUCTION')
+        if secret_key == 'CHANGE_THIS_IN_PRODUCTION':
+            logger.warning("Using default JWT secret key - INSECURE!")
+        _jwt_manager = JWTManager(secret_key)
+    return _jwt_manager
+
+async def verify_auth_token(authorization: str = Header(None)) -> Dict[str, Any]:
+    """Verify JWT authentication token."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+    
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+    
+    token = authorization.replace("Bearer ", "")
+    jwt_manager = get_jwt_manager()
+    
+    payload = jwt_manager.verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    return payload
 
 def get_contract_manager() -> ContractManager:
     """Get or initialize contract manager."""
@@ -41,30 +71,63 @@ def get_contract_manager() -> ContractManager:
 # NFT ENDPOINTS
 # ============================================================================
 
+from pydantic import BaseModel, validator, Field
+
 class NFTMintRequest(BaseModel):
     """Request model for minting NFT."""
-    to_address: str
-    title: str
-    artist: str
-    content_hash: str
-    edition: int
-    max_editions: int
-    royalty_bps: int = 1000  # 10% default
+    to_address: str = Field(..., min_length=34, max_length=42)
+    title: str = Field(..., min_length=1, max_length=200)
+    artist: str = Field(..., min_length=1, max_length=100)
+    content_hash: str = Field(..., min_length=64, max_length=64)
+    edition: int = Field(..., ge=1)
+    max_editions: int = Field(..., ge=1, le=10000)
+    royalty_bps: int = Field(1000, ge=0, le=10000)  # 0-100%
     royalty_recipient: Optional[str] = None
+    
+    @validator('to_address', 'royalty_recipient')
+    def validate_address(cls, v):
+        if v and not (v.startswith('T') and len(v) == 34):
+            raise ValueError('Invalid TRON address format')
+        return v
+    
+    @validator('content_hash')
+    def validate_hash(cls, v):
+        if not all(c in '0123456789abcdef' for c in v.lower()):
+            raise ValueError('Invalid content hash format')
+        return v.lower()
 
 
 @web3_router.post("/nft/mint")
-async def mint_nft(request: NFTMintRequest):
+async def mint_nft(request: NFTMintRequest, auth: Dict[str, Any] = Depends(verify_auth_token)):
     """
     Mint a music NFT.
     
+    Requires: Authentication (JWT token)
+    Security: Only artists or admins can mint NFTs
+    
     Args:
         request: NFT mint request
+        auth: Authenticated user payload
         
     Returns:
         Transaction hash and NFT details
     """
     try:
+        # Check authorization level
+        security_level = auth.get('level', SecurityLevel.USER.value)
+        if security_level not in [SecurityLevel.ARTIST.value, SecurityLevel.ADMIN.value]:
+            raise HTTPException(
+                status_code=403,
+                detail="Only artists and admins can mint NFTs"
+            )
+        
+        # Validate edition numbers
+        if request.edition > request.max_editions:
+            raise HTTPException(
+                status_code=400,
+                detail="Edition number cannot exceed max editions"
+            )
+        
         manager = get_contract_manager()
         
         if not manager.nft:

@@ -68,12 +68,39 @@ class TronConfig:
         )
     
     def validate(self) -> None:
-        """Validate configuration."""
+        """
+        Validate configuration.
+        
+        Raises:
+            ValueError: If configuration is invalid
+        """
         if not self.private_key:
             raise ValueError("TRON_PRIVATE_KEY is required")
         
         if len(self.private_key) != 64:
             raise ValueError("Private key must be 64 hex characters")
+        
+        # Validate hex format
+        try:
+            int(self.private_key, 16)
+        except ValueError:
+            raise ValueError("Private key must be valid hex")
+        
+        # Warn if using weak/default private key
+        import logging
+        logger = logging.getLogger(__name__)
+        weak_keys = ['0' * 64, '1' * 64, 'a' * 64, 'f' * 64]
+        if self.private_key.lower() in weak_keys:
+            logger.error("CRITICAL: Using weak/default private key - INSECURE!")
+            raise ValueError("Weak private key detected - change immediately")
+    
+    def __repr__(self) -> str:
+        """Safe string representation without exposing private key."""
+        return (
+            f"TronConfig(network={self.network.value}, "
+            f"rpc={self.rpc_endpoint}, "
+            f"private_key=***REDACTED***)"
+        )
     
     def get_contract_address(self, contract_name: str) -> Optional[str]:
         """Get contract address by name."""

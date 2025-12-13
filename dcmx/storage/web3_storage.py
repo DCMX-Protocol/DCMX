@@ -142,12 +142,14 @@ class Web3StorageManager:
                 logger.warning(f"Failed to replicate to {provider.value}: {e}")
         
         # Register content
+        from datetime import datetime
+        
         stored = StoredContent(
             content_hash=content_hash,
             content_id=content_id,
             provider=primary_provider,
             size_bytes=len(content),
-            timestamp=__import__("datetime").datetime.utcnow().isoformat(),
+            timestamp=datetime.utcnow().isoformat(),
             replicas=replicas,
             is_encrypted=encrypt,
             encryption_key=encryption_key,

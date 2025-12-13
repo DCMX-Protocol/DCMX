@@ -221,27 +221,55 @@ class EncryptionManager:
     
     @staticmethod
     def encrypt_sensitive_data(data: str, key: str) -> str:
-        """Encrypt sensitive data using Fernet (AES-128)."""
+        """Encrypt sensitive data using Fernet (AES-256)."""
         from cryptography.fernet import Fernet
+        import base64
         
         try:
-            f = Fernet(key.encode() if isinstance(key, str) else key)
+            # Ensure key is properly formatted for Fernet (44 chars base64)
+            if isinstance(key, str):
+                if len(key) == 32:
+                    # Assume it's a 32-byte key, encode to base64
+                    key = base64.urlsafe_b64encode(key.encode())
+                elif len(key) != 44:
+                    # Invalid key length, generate proper key from input
+                    import hashlib
+                    hash_key = hashlib.sha256(key.encode()).digest()
+                    key = base64.urlsafe_b64encode(hash_key)
+                else:
+                    key = key.encode()
+            
+            f = Fernet(key)
             return f.encrypt(data.encode()).decode()
         except Exception as e:
             logger.error(f"Encryption failed: {e}")
-            raise
+            raise ValueError(f"Encryption error: {str(e)}")
     
     @staticmethod
     def decrypt_sensitive_data(encrypted: str, key: str) -> str:
-        """Decrypt sensitive data using Fernet (AES-128)."""
+        """Decrypt sensitive data using Fernet (AES-256)."""
         from cryptography.fernet import Fernet
+        import base64
         
         try:
-            f = Fernet(key.encode() if isinstance(key, str) else key)
+            # Ensure key is properly formatted for Fernet (44 chars base64)
+            if isinstance(key, str):
+                if len(key) == 32:
+                    # Assume it's a 32-byte key, encode to base64
+                    key = base64.urlsafe_b64encode(key.encode())
+                elif len(key) != 44:
+                    # Invalid key length, generate proper key from input
+                    import hashlib
+                    hash_key = hashlib.sha256(key.encode()).digest()
+                    key = base64.urlsafe_b64encode(hash_key)
+                else:
+                    key = key.encode()
+            
+            f = Fernet(key)
             return f.decrypt(encrypted.encode()).decode()
         except Exception as e:
             logger.error(f"Decryption failed: {e}")
-            raise
+            raise ValueError(f"Decryption error: {str(e)}")
     
     @staticmethod
     def generate_api_key() -> Tuple[str, str]:
