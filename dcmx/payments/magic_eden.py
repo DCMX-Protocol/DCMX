@@ -89,15 +89,15 @@ class MagicEdenClient:
         
         logger.info(f"Magic Eden client initialized for {chain.value}")
     
-    async def _ensure_session(self):
+    async def _ensure_session(self) -> None:
         """Ensure aiohttp session exists."""
         if self.session is None:
-            headers = {}
+            headers: Dict[str, str] = {}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
             self.session = aiohttp.ClientSession(headers=headers)
     
-    async def close(self):
+    async def close(self) -> None:
         """Close the HTTP session."""
         if self.session:
             await self.session.close()
@@ -129,7 +129,7 @@ class MagicEdenClient:
         await self._ensure_session()
         
         # Prepare listing data
-        listing_data = {
+        listing_data: Dict[str, Any] = {
             "nft_address": nft_address,
             "token_id": token_id,
             "price": price,
@@ -141,6 +141,9 @@ class MagicEdenClient:
         try:
             # Magic Eden listing endpoint
             url = f"{self.base_url}/listings"
+            
+            if self.session is None:
+                raise RuntimeError("Session not initialized")
             
             async with self.session.post(url, json=listing_data) as response:
                 if response.status == 201:
@@ -189,6 +192,9 @@ class MagicEdenClient:
         try:
             url = f"{self.base_url}/listings/{listing_id}"
             
+            if self.session is None:
+                raise RuntimeError("Session not initialized")
+            
             async with self.session.patch(url, json={"price": new_price}) as response:
                 if response.status == 200:
                     logger.info(f"Listing {listing_id} price updated to {new_price}")
@@ -216,6 +222,9 @@ class MagicEdenClient:
         try:
             url = f"{self.base_url}/listings/{listing_id}/cancel"
             
+            if self.session is None:
+                raise RuntimeError("Session not initialized")
+            
             async with self.session.post(url) as response:
                 if response.status == 200:
                     logger.info(f"Listing {listing_id} cancelled")
@@ -242,6 +251,9 @@ class MagicEdenClient:
         
         try:
             url = f"{self.base_url}/listings/{listing_id}"
+            
+            if self.session is None:
+                raise RuntimeError("Session not initialized")
             
             async with self.session.get(url) as response:
                 if response.status == 200:
@@ -281,6 +293,9 @@ class MagicEdenClient:
         try:
             url = f"{self.base_url}/collections/{collection_symbol}/stats"
             
+            if self.session is None:
+                raise RuntimeError("Session not initialized")
+            
             async with self.session.get(url) as response:
                 if response.status == 200:
                     stats = await response.json()
@@ -316,6 +331,9 @@ class MagicEdenClient:
         try:
             url = f"{self.base_url}/tokens/{nft_address}/{token_id}/activities"
             params = {"limit": limit, "offset": 0}
+            
+            if self.session is None:
+                raise RuntimeError("Session not initialized")
             
             async with self.session.get(url, params=params) as response:
                 if response.status == 200:
@@ -423,7 +441,7 @@ class DCMXMagicEdenIntegration:
             MagicEdenListing
         """
         # Prepare music-specific metadata
-        metadata = {
+        metadata: Dict[str, Any] = {
             "collection": self.collection_symbol,
             "artist": artist,
             "track_title": track_title,
@@ -479,6 +497,6 @@ class DCMXMagicEdenIntegration:
             "volume_30d": stats.get("volume_30d", 0),
         }
     
-    async def close(self):
+    async def close(self) -> None:
         """Close client connection."""
         await self.client.close()

@@ -7,8 +7,8 @@ Prometheus metrics for monitoring DCMX performance and health.
 import time
 import logging
 from functools import wraps
-from typing import Callable
-from prometheus_client import Counter, Histogram, Gauge, Info, generate_latest, REGISTRY
+from typing import Callable, Any, TypeVar
+from prometheus_client import Counter, Histogram, Gauge, Info, generate_latest
 from prometheus_client.core import CollectorRegistry
 
 logger = logging.getLogger(__name__)
@@ -197,11 +197,15 @@ app_info.info({
 # Metric Decorators
 # ============================================================================
 
-def track_request_metrics(endpoint: str):
+# Type variable for decorators
+F = TypeVar('F', bound=Callable[..., Any])
+
+
+def track_request_metrics(endpoint: str) -> Callable[[F], F]:
     """Decorator to track HTTP request metrics."""
-    def decorator(func: Callable):
+    def decorator(func: F) -> F:
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             start_time = time.time()
             status = "500"
             
@@ -209,7 +213,7 @@ def track_request_metrics(endpoint: str):
                 result = await func(*args, **kwargs)
                 status = "200"
                 return result
-            except Exception as e:
+            except Exception:
                 status = "500"
                 raise
             finally:
@@ -224,15 +228,15 @@ def track_request_metrics(endpoint: str):
                     status=status
                 ).inc()
         
-        return wrapper
+        return wrapper  # type: ignore[return-value]
     return decorator
 
 
-def track_db_query(query_type: str):
+def track_db_query(query_type: str) -> Callable[[F], F]:
     """Decorator to track database query metrics."""
-    def decorator(func: Callable):
+    def decorator(func: F) -> F:
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             start_time = time.time()
             status = "error"
             
@@ -240,7 +244,7 @@ def track_db_query(query_type: str):
                 result = await func(*args, **kwargs)
                 status = "success"
                 return result
-            except Exception as e:
+            except Exception:
                 status = "error"
                 raise
             finally:
@@ -253,7 +257,7 @@ def track_db_query(query_type: str):
                     status=status
                 ).inc()
         
-        return wrapper
+        return wrapper  # type: ignore[return-value]
     return decorator
 
 

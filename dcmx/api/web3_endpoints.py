@@ -3,15 +3,15 @@
 import logging
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, HTTPException, Query, Depends, Header
-from pydantic import BaseModel, validator, Field
+from fastapi import APIRouter, HTTPException, Query, Depends, Header  # type: ignore[import]
+from pydantic import BaseModel, field_validator, Field
 
 from dcmx.tron.contracts import ContractManager
 from dcmx.security.manager import JWTManager, SecurityLevel
 from dcmx.tron.config import TronConfig
 from dcmx.tron import utils
 from dcmx.database.connection import get_database
-from dcmx.database.models import NFTIndex, RewardClaimIndex, TransactionIndex
+from dcmx.database.models import NFTIndex, RewardClaimIndex, TransactionIndex  # type: ignore[attr-defined]
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def get_contract_manager() -> ContractManager:
 # NFT ENDPOINTS
 # ============================================================================
 
-from pydantic import BaseModel, validator, Field
+from pydantic import BaseModel, field_validator, Field
 
 class NFTMintRequest(BaseModel):
     """Request model for minting NFT."""
@@ -84,14 +84,16 @@ class NFTMintRequest(BaseModel):
     royalty_bps: int = Field(1000, ge=0, le=10000)  # 0-100%
     royalty_recipient: Optional[str] = None
     
-    @validator('to_address', 'royalty_recipient')
-    def validate_address(cls, v):
+    @field_validator('to_address', 'royalty_recipient')
+    @classmethod
+    def validate_address(cls, v: Optional[str]) -> Optional[str]:
         if v and not (v.startswith('T') and len(v) == 34):
             raise ValueError('Invalid TRON address format')
         return v
     
-    @validator('content_hash')
-    def validate_hash(cls, v):
+    @field_validator('content_hash')
+    @classmethod
+    def validate_hash(cls, v: str) -> str:
         if not all(c in '0123456789abcdef' for c in v.lower()):
             raise ValueError('Invalid content hash format')
         return v.lower()
