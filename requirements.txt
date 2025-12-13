@@ -36,6 +36,7 @@ aioredis>=2.0.1
 
 # Solidity compiler
 py-solc-x>=2.0.0
+solcx>=2.0.0
 
 # FastAPI (for REST API)
 fastapi>=0.104.0
@@ -44,6 +45,11 @@ uvicorn[standard]>=0.24.0
 # Payment integrations (Magic Eden + MIM)
 stripe>=7.0.0  # Credit card payments
 requests>=2.31.0  # HTTP client for payment APIs
+
+# Decentralized Storage
+boto3>=1.34.0  # S3-compatible (Storj)
+botocore>=1.34.0  # AWS SDK core
+aiofiles>=23.2.0  # Async file I/O
 
 # Testing
 pytest>=7.4.0

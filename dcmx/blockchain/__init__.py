@@ -62,3 +62,43 @@ __all__ = [
     "INTERFACE_IDS",
     "NETWORKS",
 ]
+
+# Smart Contract Builder & Deployment (optional dependencies)
+try:
+    from .contract_builder import (
+        ContractBuilder,
+        ContractTemplate,
+        ContractParameter,
+        SecurityLevel,
+        ContractType,
+        create_royalty_split_contract,
+        create_time_locked_contract,
+        create_auction_contract,
+    )
+    from .contract_deployer import (
+        ContractDeployer,
+        DeploymentConfig,
+        DeploymentResult,
+        ContractRegistry,
+        deploy_from_template,
+    )
+    
+    __all__.extend([
+        "ContractBuilder",
+        "ContractTemplate",
+        "ContractParameter",
+        "SecurityLevel",
+        "ContractType",
+        "create_royalty_split_contract",
+        "create_time_locked_contract",
+        "create_auction_contract",
+        "ContractDeployer",
+        "DeploymentConfig",
+        "DeploymentResult",
+        "ContractRegistry",
+        "deploy_from_template",
+    ])
+except ImportError:
+    # solcx or other dependencies not installed
+    pass
+
