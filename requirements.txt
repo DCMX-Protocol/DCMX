@@ -7,6 +7,7 @@ msgpack>=1.0.7
 
 # Cryptography for content addressing and peer verification
 cryptography>=41.0.0
+pyjwt>=2.8.0
 
 # Audio processing (ISO/IEC 18040, ISO/IEC 18043)
 numpy>=1.24.0
