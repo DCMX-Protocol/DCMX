@@ -1,0 +1,117 @@
+groups:
+  - name: dcmx_alerts
+    interval: 30s
+    rules:
+      # API Server Alerts
+      - alert: APIServerDown
+        expr: up{job="dcmx-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DCMX API server is down"
+          description: "API server {{ $labels.pod }} has been down for more than 2 minutes"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} in the last 5 minutes"
+
+      - alert: SlowResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow API response times"
+          description: "95th percentile latency is {{ $value }}s"
+
+      # Database Alerts
+      - alert: DatabaseConnectionPoolHigh
+        expr: pg_stat_database_numbackends / pg_settings_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool usage high"
+          description: "Connection pool is {{ $value | humanizePercentage }} full"
+
+      - alert: DatabaseDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "Database has been unreachable for 1 minute"
+
+      # Redis Alerts
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis has been unreachable for 1 minute"
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage is high"
+          description: "Redis memory usage is {{ $value | humanizePercentage }}"
+
+      # Resource Alerts
+      - alert: HighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{pod=~"dcmx-.*"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage detected"
+          description: "Pod {{ $labels.pod }} CPU usage is {{ $value | humanizePercentage }}"
+
+      - alert: HighMemoryUsage
+        expr: container_memory_usage_bytes{pod=~"dcmx-.*"} / container_spec_memory_limit_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage detected"
+          description: "Pod {{ $labels.pod }} memory usage is {{ $value | humanizePercentage }}"
+
+      # Blockchain Alerts
+      - alert: BlockchainIndexerLag
+        expr: time() - blockchain_last_indexed_block_timestamp > 300
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Blockchain indexer is lagging"
+          description: "Indexer is {{ $value }}s behind the latest block"
+
+      # Security Alerts
+      - alert: TooManyFailedAuthAttempts
+        expr: rate(auth_failed_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of failed authentication attempts"
+          description: "{{ $value }} failed auth attempts per second"
+
+      - alert: UnauthorizedAccessAttempt
+        expr: rate(http_requests_total{status="403"}[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of unauthorized access attempts"
+          description: "{{ $value }} 403 responses per second"

@@ -1,0 +1,163 @@
+name: Security Scanning
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        pip install safety pip-audit
+    
+    - name: Run Safety check
+      run: safety check --json --output safety-report.json
+      continue-on-error: true
+    
+    - name: Run pip-audit
+      run: pip-audit -r requirements.txt -f json -o pip-audit-report.json
+      continue-on-error: true
+    
+    - name: Upload reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: dependency-reports
+        path: |
+          safety-report.json
+          pip-audit-report.json
+
+  sast-scan:
+    name: Static Application Security Testing
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Bandit security scanner
+      uses: tj-actions/bandit@v5.1
+      with:
+        targets: dcmx/
+        options: "-r -f json -o bandit-report.json"
+    
+    - name: Run Semgrep
+      uses: returntocorp/semgrep-action@v1
+      with:
+        config: >-
+          p/security-audit
+          p/owasp-top-ten
+          p/python
+        generateSarif: true
+    
+    - name: Upload Semgrep results
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: semgrep.sarif
+      if: always()
+
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: TruffleHog OSS
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: ${{ github.event.repository.default_branch }}
+        head: HEAD
+        extra_args: --json --only-verified
+
+  container-scan:
+    name: Container Image Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build API image for scanning
+      run: docker build -f docker/Dockerfile.api -t dcmx-api:scan .
+    
+    - name: Run Trivy scanner on API image
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'dcmx-api:scan'
+        format: 'sarif'
+        output: 'trivy-api-results.sarif'
+        severity: 'CRITICAL,HIGH'
+    
+    - name: Upload Trivy results
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: 'trivy-api-results.sarif'
+      if: always()
+    
+    - name: Run Grype scanner
+      uses: anchore/scan-action@v3
+      with:
+        image: 'dcmx-api:scan'
+        fail-build: false
+        severity-cutoff: high
+
+  license-scan:
+    name: License Compliance
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: pip install pip-licenses
+    
+    - name: Generate license report
+      run: pip-licenses --format=json --output-file=licenses.json
+    
+    - name: Upload license report
+      uses: actions/upload-artifact@v4
+      with:
+        name: license-report
+        path: licenses.json
+
+  infrastructure-scan:
+    name: Infrastructure as Code Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Checkov
+      uses: bridgecrewio/checkov-action@master
+      with:
+        directory: .
+        framework: kubernetes,dockerfile
+        output_format: sarif
+        output_file_path: checkov-results.sarif
+    
+    - name: Upload Checkov results
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: checkov-results.sarif
+      if: always()

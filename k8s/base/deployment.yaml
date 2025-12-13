@@ -1,0 +1,277 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dcmx-production
+  labels:
+    name: dcmx-production
+    environment: production
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dcmx-config
+  namespace: dcmx-production
+data:
+  TRON_NETWORK: "mainnet"
+  DCMX_USE_DATABASE: "true"
+  LOG_LEVEL: "INFO"
+  WORKERS: "4"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dcmx-secrets
+  namespace: dcmx-production
+type: Opaque
+stringData:
+  database-url: "postgresql://dcmx:CHANGE_ME@dcmx-postgres:5432/dcmx"
+  redis-url: "redis://dcmx-redis:6379"
+  jwt-secret: "CHANGE_ME_IN_PRODUCTION"
+  tron-private-key: "CHANGE_ME_IN_PRODUCTION"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dcmx-api
+  namespace: dcmx-production
+  labels:
+    app: dcmx-api
+    component: backend
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: dcmx-api
+  template:
+    metadata:
+      labels:
+        app: dcmx-api
+        component: backend
+    spec:
+      serviceAccountName: dcmx-api
+      containers:
+      - name: api
+        image: ghcr.io/dcmx-protocol/dcmx/api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: dcmx-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: dcmx-secrets
+              key: redis-url
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dcmx-secrets
+              key: jwt-secret
+        - name: TRON_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dcmx-secrets
+              key: tron-private-key
+        envFrom:
+        - configMapRef:
+            name: dcmx-config
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: storage
+          mountPath: /app/storage
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: dcmx-storage
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - dcmx-api
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dcmx-worker
+  namespace: dcmx-production
+  labels:
+    app: dcmx-worker
+    component: worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: dcmx-worker
+  template:
+    metadata:
+      labels:
+        app: dcmx-worker
+        component: worker
+    spec:
+      serviceAccountName: dcmx-worker
+      containers:
+      - name: worker
+        image: ghcr.io/dcmx-protocol/dcmx/worker:latest
+        imagePullPolicy: Always
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: dcmx-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: dcmx-secrets
+              key: redis-url
+        - name: TRON_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dcmx-secrets
+              key: tron-private-key
+        envFrom:
+        - configMapRef:
+            name: dcmx-config
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dcmx-api
+  namespace: dcmx-production
+  labels:
+    app: dcmx-api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: dcmx-api
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dcmx-api
+  namespace: dcmx-production
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dcmx-worker
+  namespace: dcmx-production
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dcmx-storage
+  namespace: dcmx-production
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: fast-ssd
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dcmx-ingress
+  namespace: dcmx-production
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - dcmx.network
+    - api.dcmx.network
+    secretName: dcmx-tls
+  rules:
+  - host: api.dcmx.network
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: dcmx-api
+            port:
+              number: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: dcmx-api-hpa
+  namespace: dcmx-production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: dcmx-api
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
