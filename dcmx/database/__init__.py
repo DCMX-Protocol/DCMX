@@ -8,6 +8,7 @@ Provides database infrastructure for persistent storage across all DCMX systems:
 - Reward and royalty distribution
 - Transaction history and audit logs
 - System configuration
+- Web3/TRON blockchain integration
 """
 
 from dcmx.database.config import DatabaseConfig
@@ -40,6 +41,8 @@ from dcmx.database.models import (
     MultisigProposal,
 )
 from dcmx.database.dal import DataAccessLayer
+from dcmx.database.sync import sync_blockchain_data
+from dcmx.database.queries import DatabaseQueries
 
 __all__ = [
     "DatabaseConfig",
@@ -72,4 +75,8 @@ __all__ = [
     "AdminAction",
     "MultisigProposal",
     "DataAccessLayer",
+    "sync_blockchain_data",
+    "DatabaseQueries",
+]
+
 ]
