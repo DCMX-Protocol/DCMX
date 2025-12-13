@@ -1,144 +1,91 @@
-"""
-TRON Network Configuration
-
-Supports both mainnet and testnet (Shasta/Nile) deployments.
-"""
+"""TRON network configuration for DCMX."""
 
 import os
-from dataclasses import dataclass
-from typing import Optional, Dict
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import Optional, Dict
 
 
 class NetworkType(Enum):
     """TRON network types."""
     MAINNET = "mainnet"
-    SHASTA = "shasta"  # Primary testnet
-    NILE = "nile"      # Alternative testnet
-
-
-@dataclass
-class NetworkConfig:
-    """Configuration for a TRON network."""
-    name: str
-    network_type: NetworkType
-    full_node: str
-    solidity_node: str
-    event_server: str
-    chain_id: int
-    explorer_url: str
-    
-    def to_dict(self) -> Dict:
-        """Convert to dictionary."""
-        return {
-            "name": self.name,
-            "network_type": self.network_type.value,
-            "full_node": self.full_node,
-            "solidity_node": self.solidity_node,
-            "event_server": self.event_server,
-            "chain_id": self.chain_id,
-            "explorer_url": self.explorer_url,
-        }
-
-
-# Network configurations
-NETWORKS: Dict[str, NetworkConfig] = {
-    "mainnet": NetworkConfig(
-        name="TRON Mainnet",
-        network_type=NetworkType.MAINNET,
-        full_node="https://api.trongrid.io",
-        solidity_node="https://api.trongrid.io",
-        event_server="https://api.trongrid.io",
-        chain_id=1,
-        explorer_url="https://tronscan.org",
-    ),
-    "shasta": NetworkConfig(
-        name="Shasta Testnet",
-        network_type=NetworkType.SHASTA,
-        full_node="https://api.shasta.trongrid.io",
-        solidity_node="https://api.shasta.trongrid.io",
-        event_server="https://api.shasta.trongrid.io",
-        chain_id=2,
-        explorer_url="https://shasta.tronscan.org",
-    ),
-    "nile": NetworkConfig(
-        name="Nile Testnet",
-        network_type=NetworkType.NILE,
-        full_node="https://api.nileex.io",
-        solidity_node="https://api.nileex.io",
-        event_server="https://event.nileex.io",
-        chain_id=3,
-        explorer_url="https://nile.tronscan.org",
-    ),
-}
+    SHASTA = "shasta"  # Testnet
+    NILE = "nile"  # Testnet
 
 
 @dataclass
 class TronConfig:
-    """
-    DCMX TRON Configuration
+    """Configuration for TRON blockchain connection."""
     
-    Load from environment variables or provide directly.
-    """
-    network: str = "shasta"  # Default to testnet
+    network: NetworkType = NetworkType.SHASTA
     private_key: Optional[str] = None
-    api_key: Optional[str] = None  # TronGrid API key (optional, for rate limits)
     
-    # Contract addresses (populated after deployment)
+    # Contract addresses (set after deployment)
     dcmx_token_address: Optional[str] = None
     music_nft_address: Optional[str] = None
     compliance_registry_address: Optional[str] = None
     reward_vault_address: Optional[str] = None
     royalty_distributor_address: Optional[str] = None
     
+    # Network endpoints
+    _network_endpoints: Dict[NetworkType, str] = field(default_factory=lambda: {
+        NetworkType.MAINNET: "https://api.trongrid.io",
+        NetworkType.SHASTA: "https://api.shasta.trongrid.io",
+        NetworkType.NILE: "https://api.nileex.io",
+    })
+    
+    # API keys for TronGrid (optional but recommended for production)
+    api_key: Optional[str] = None
+    
+    @property
+    def rpc_endpoint(self) -> str:
+        """Get RPC endpoint for configured network."""
+        endpoint = self._network_endpoints.get(self.network)
+        if not endpoint:
+            raise ValueError(f"Unknown network: {self.network}")
+        return endpoint
+    
+    @property
+    def is_testnet(self) -> bool:
+        """Check if using testnet."""
+        return self.network in (NetworkType.SHASTA, NetworkType.NILE)
+    
     @classmethod
     def from_env(cls) -> "TronConfig":
         """Load configuration from environment variables."""
+        network_str = os.getenv("TRON_NETWORK", "shasta").lower()
+        network = NetworkType[network_str.upper()]
+        
         return cls(
-            network=os.getenv("TRON_NETWORK", "shasta"),
+            network=network,
             private_key=os.getenv("TRON_PRIVATE_KEY"),
-            api_key=os.getenv("TRONGRID_API_KEY"),
             dcmx_token_address=os.getenv("DCMX_TOKEN_ADDRESS"),
             music_nft_address=os.getenv("MUSIC_NFT_ADDRESS"),
             compliance_registry_address=os.getenv("COMPLIANCE_REGISTRY_ADDRESS"),
             reward_vault_address=os.getenv("REWARD_VAULT_ADDRESS"),
             royalty_distributor_address=os.getenv("ROYALTY_DISTRIBUTOR_ADDRESS"),
+            api_key=os.getenv("TRONGRID_API_KEY"),
         )
     
-    def get_network_config(self) -> NetworkConfig:
-        """Get network configuration."""
-        if self.network not in NETWORKS:
-            raise ValueError(f"Unknown network: {self.network}")
-        return NETWORKS[self.network]
+    def validate(self) -> None:
+        """Validate configuration."""
+        if not self.private_key:
+            raise ValueError("TRON_PRIVATE_KEY is required")
+        
+        if len(self.private_key) != 64:
+            raise ValueError("Private key must be 64 hex characters")
     
-    def to_dict(self) -> Dict:
-        """Convert to dictionary (excluding sensitive data)."""
-        return {
-            "network": self.network,
-            "has_private_key": self.private_key is not None,
-            "has_api_key": self.api_key is not None,
-            "dcmx_token_address": self.dcmx_token_address,
-            "music_nft_address": self.music_nft_address,
-            "compliance_registry_address": self.compliance_registry_address,
-            "reward_vault_address": self.reward_vault_address,
-            "royalty_distributor_address": self.royalty_distributor_address,
+    def get_contract_address(self, contract_name: str) -> Optional[str]:
+        """Get contract address by name."""
+        mapping = {
+            "dcmx_token": self.dcmx_token_address,
+            "music_nft": self.music_nft_address,
+            "compliance_registry": self.compliance_registry_address,
+            "reward_vault": self.reward_vault_address,
+            "royalty_distributor": self.royalty_distributor_address,
         }
+        return mapping.get(contract_name.lower())
 
 
 # Default configuration
-DEFAULT_CONFIG = TronConfig(
-    network="shasta",
-    # Contract addresses will be populated after deployment
-)
-
-
-def get_config() -> TronConfig:
-    """
-    Get TRON configuration.
-    
-    Tries environment variables first, falls back to defaults.
-    """
-    try:
-        return TronConfig.from_env()
-    except Exception:
-        return DEFAULT_CONFIG
+DEFAULT_CONFIG = TronConfig()

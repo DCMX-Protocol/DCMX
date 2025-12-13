@@ -3,59 +3,53 @@ pragma solidity ^0.8.0;
 
 /**
  * @title DCMXToken
- * @dev TRC-20 Platform Utility Token for DCMX
+ * @dev TRC-20 utility token for DCMX platform
  * 
- * Features:
- * - Fixed/configurable total supply
- * - Minting for reward claims (controlled by RewardVault)
- * - Burning for platform fees
- * - 18 decimals standard
+ * Token Economics:
+ * - Fixed supply: 1,000,000,000 tokens
+ * - Decimals: 18
+ * - Utility: Platform fees, governance voting, reward distribution
+ * - NOT an investment security - pure utility token
  */
 contract DCMXToken {
-    string public constant name = "DCMX Token";
-    string public constant symbol = "DCMX";
-    uint8 public constant decimals = 18;
-    
+    string public name = "DCMX";
+    string public symbol = "DCMX";
+    uint8 public decimals = 18;
     uint256 public totalSupply;
-    uint256 public maxSupply;
+    uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18;
+    
+    address public admin;
+    bool public mintingFinished = false;
     
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
     
-    address public owner;
-    mapping(address => bool) public minters;  // Authorized minters (e.g., RewardVault)
-    
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
-    event Mint(address indexed to, uint256 amount);
-    event Burn(address indexed from, uint256 amount);
-    event MinterAdded(address indexed minter);
-    event MinterRemoved(address indexed minter);
+    event Mint(address indexed to, uint256 value);
+    event Burn(address indexed from, uint256 value);
+    event MintingFinished();
     
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Only admin");
         _;
     }
     
-    modifier onlyMinter() {
-        require(minters[msg.sender], "Not authorized minter");
+    modifier canMint() {
+        require(!mintingFinished, "Minting finished");
         _;
     }
     
-    constructor(uint256 _initialSupply, uint256 _maxSupply) {
-        owner = msg.sender;
-        maxSupply = _maxSupply;
-        
-        if (_initialSupply > 0) {
-            require(_initialSupply <= _maxSupply, "Initial supply exceeds max");
-            totalSupply = _initialSupply;
-            balanceOf[msg.sender] = _initialSupply;
-            emit Transfer(address(0), msg.sender, _initialSupply);
-        }
+    constructor(uint256 initialSupply) {
+        require(initialSupply <= MAX_SUPPLY, "Exceeds max supply");
+        admin = msg.sender;
+        totalSupply = initialSupply;
+        balanceOf[admin] = initialSupply;
+        emit Transfer(address(0), admin, initialSupply);
     }
     
     function transfer(address to, uint256 value) public returns (bool) {
-        require(to != address(0), "Invalid recipient");
+        require(to != address(0), "Invalid address");
         require(balanceOf[msg.sender] >= value, "Insufficient balance");
         
         balanceOf[msg.sender] -= value;
@@ -72,7 +66,7 @@ contract DCMXToken {
     }
     
     function transferFrom(address from, address to, uint256 value) public returns (bool) {
-        require(to != address(0), "Invalid recipient");
+        require(to != address(0), "Invalid address");
         require(balanceOf[from] >= value, "Insufficient balance");
         require(allowance[from][msg.sender] >= value, "Insufficient allowance");
         
@@ -84,58 +78,32 @@ contract DCMXToken {
         return true;
     }
     
-    /**
-     * @dev Mint new tokens for rewards
-     * Only authorized minters (RewardVault) can call this
-     */
-    function mint(address to, uint256 amount) external onlyMinter returns (bool) {
-        require(to != address(0), "Invalid recipient");
-        require(totalSupply + amount <= maxSupply, "Exceeds max supply");
+    function mint(address to, uint256 value) public onlyAdmin canMint returns (bool) {
+        require(to != address(0), "Invalid address");
+        require(totalSupply + value <= MAX_SUPPLY, "Exceeds max supply");
         
-        totalSupply += amount;
-        balanceOf[to] += amount;
+        totalSupply += value;
+        balanceOf[to] += value;
         
-        emit Mint(to, amount);
-        emit Transfer(address(0), to, amount);
+        emit Mint(to, value);
+        emit Transfer(address(0), to, value);
         return true;
     }
     
-    /**
-     * @dev Burn tokens for platform fees
-     */
-    function burn(uint256 amount) external returns (bool) {
-        require(balanceOf[msg.sender] >= amount, "Insufficient balance");
+    function burn(uint256 value) public returns (bool) {
+        require(balanceOf[msg.sender] >= value, "Insufficient balance");
         
-        balanceOf[msg.sender] -= amount;
-        totalSupply -= amount;
+        balanceOf[msg.sender] -= value;
+        totalSupply -= value;
         
-        emit Burn(msg.sender, amount);
-        emit Transfer(msg.sender, address(0), amount);
+        emit Burn(msg.sender, value);
+        emit Transfer(msg.sender, address(0), value);
         return true;
     }
     
-    /**
-     * @dev Add authorized minter
-     */
-    function addMinter(address minter) external onlyOwner {
-        require(minter != address(0), "Invalid minter");
-        minters[minter] = true;
-        emit MinterAdded(minter);
-    }
-    
-    /**
-     * @dev Remove authorized minter
-     */
-    function removeMinter(address minter) external onlyOwner {
-        minters[minter] = false;
-        emit MinterRemoved(minter);
-    }
-    
-    /**
-     * @dev Transfer ownership
-     */
-    function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "Invalid owner");
-        owner = newOwner;
+    function finishMinting() public onlyAdmin canMint returns (bool) {
+        mintingFinished = true;
+        emit MintingFinished();
+        return true;
     }
 }

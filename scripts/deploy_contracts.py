@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
-"""
-Deploy DCMX Smart Contracts to TRON
-
-Deploys all DCMX contracts to TRON network (mainnet or testnet).
-"""
+"""Deploy DCMX smart contracts to TRON blockchain."""
 
 import sys
-import os
 import json
 import logging
 from pathlib import Path
+from typing import Dict
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -17,183 +13,205 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dcmx.tron.client import TronClient
 from dcmx.tron.config import TronConfig
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 
-def deploy_contract(
-    client: TronClient,
-    contract_name: str,
-    constructor_args: list = None
-) -> str:
-    """
-    Deploy a contract.
+class ContractDeployer:
+    """Deploy DCMX smart contracts."""
     
-    Args:
-        client: TRON client
-        contract_name: Name of contract
-        constructor_args: Constructor arguments
+    def __init__(self, config: TronConfig = None):
+        """
+        Initialize deployer.
         
-    Returns:
-        Deployed contract address
+        Args:
+            config: TRON configuration
+        """
+        self.config = config or TronConfig.from_env()
+        self.client = TronClient(self.config)
+        self.deployed_addresses: Dict[str, str] = {}
+        
+        logger.info(f"Deployer initialized on {self.config.network.value}")
+        logger.info(f"Deployer address: {self.client.address}")
     
-    Note:
-        This is a placeholder implementation. Actual deployment requires:
-        1. Compiling Solidity contracts to bytecode and ABI
-        2. Using tronpy.contract.Contract.deploy() or TronGrid API
-        3. Proper transaction signing and broadcasting
+    def deploy_all(self) -> Dict[str, str]:
+        """
+        Deploy all DCMX contracts.
         
-        To implement:
-        - Use solcx to compile contracts
-        - Load compiled bytecode and ABI
-        - Call client.deploy_contract() with proper parameters
-        - Wait for transaction confirmation
+        Returns:
+            Dictionary of contract names to addresses
+        """
+        logger.info("Starting contract deployment...")
         
-        Example:
-            from solcx import compile_files
-            compiled = compile_files(['DCMXToken.sol'])
-            bytecode = compiled['DCMXToken']['bin']
-            abi = compiled['DCMXToken']['abi']
-            # Deploy using tronpy
-    """
-    logger.info(f"Deploying {contract_name}...")
+        try:
+            # 1. Deploy DCMX Token
+            logger.info("Deploying DCMXToken...")
+            token_address = self.deploy_token()
+            if not token_address:
+                logger.error("Failed to deploy DCMXToken")
+                return {}
+            self.deployed_addresses['DCMXToken'] = token_address
+            
+            # 2. Deploy Music NFT
+            logger.info("Deploying MusicNFT...")
+            nft_address = self.deploy_music_nft()
+            if not nft_address:
+                logger.error("Failed to deploy MusicNFT")
+                return {}
+            self.deployed_addresses['MusicNFT'] = nft_address
+            
+            # 3. Deploy Compliance Registry
+            logger.info("Deploying ComplianceRegistry...")
+            compliance_address = self.deploy_compliance_registry()
+            if not compliance_address:
+                logger.error("Failed to deploy ComplianceRegistry")
+                return {}
+            self.deployed_addresses['ComplianceRegistry'] = compliance_address
+            
+            # 4. Deploy Reward Vault (needs token address)
+            logger.info("Deploying RewardVault...")
+            reward_address = self.deploy_reward_vault(token_address)
+            if not reward_address:
+                logger.error("Failed to deploy RewardVault")
+                return {}
+            self.deployed_addresses['RewardVault'] = reward_address
+            
+            # 5. Deploy Royalty Distributor
+            logger.info("Deploying RoyaltyDistributor...")
+            royalty_address = self.deploy_royalty_distributor()
+            if not royalty_address:
+                logger.error("Failed to deploy RoyaltyDistributor")
+                return {}
+            self.deployed_addresses['RoyaltyDistributor'] = royalty_address
+            
+            logger.info("All contracts deployed successfully!")
+            return self.deployed_addresses
+            
+        except Exception as e:
+            logger.error(f"Deployment failed: {e}", exc_info=True)
+            return {}
     
-    logger.warning(
-        f"{contract_name} deployment placeholder - implement with compiled contracts. "
-        f"See function docstring for implementation notes."
-    )
-    return f"PLACEHOLDER_{contract_name.upper()}"
+    def deploy_token(self) -> str:
+        """Deploy DCMX Token contract."""
+        # Note: In practice, you would compile the Solidity contract
+        # and deploy using tronpy or TronWeb
+        # This is a placeholder showing the structure
+        
+        logger.warning(
+            "Contract deployment requires compiled bytecode. "
+            "Please use TronBox or tronpy to compile and deploy contracts."
+        )
+        
+        # Placeholder - in real implementation, would deploy contract
+        # initial_supply = utils.to_token_units(1_000_000_000)  # 1B tokens
+        # contract = self.tron.contract().deploy(bytecode, abi, initial_supply)
+        
+        return ""
+    
+    def deploy_music_nft(self) -> str:
+        """Deploy Music NFT contract."""
+        logger.warning("Contract deployment requires compiled bytecode.")
+        return ""
+    
+    def deploy_compliance_registry(self) -> str:
+        """Deploy Compliance Registry contract."""
+        logger.warning("Contract deployment requires compiled bytecode.")
+        return ""
+    
+    def deploy_reward_vault(self, token_address: str) -> str:
+        """Deploy Reward Vault contract."""
+        logger.warning("Contract deployment requires compiled bytecode.")
+        return ""
+    
+    def deploy_royalty_distributor(self) -> str:
+        """Deploy Royalty Distributor contract."""
+        logger.warning("Contract deployment requires compiled bytecode.")
+        return ""
+    
+    def save_addresses(self, output_file: str = None):
+        """
+        Save deployed contract addresses.
+        
+        Args:
+            output_file: Path to save addresses (default: contract_addresses.json)
+        """
+        if not output_file:
+            output_file = Path(__file__).parent.parent / "contract_addresses.json"
+        
+        # Add network info
+        data = {
+            'network': self.config.network.value,
+            'deployer': self.client.address,
+            'contracts': self.deployed_addresses,
+        }
+        
+        with open(output_file, 'w') as f:
+            json.dump(data, f, indent=2)
+        
+        logger.info(f"Contract addresses saved to {output_file}")
+    
+    def print_env_config(self):
+        """Print environment variable configuration."""
+        logger.info("\n" + "="*80)
+        logger.info("Add these to your .env file:")
+        logger.info("="*80)
+        
+        for name, address in self.deployed_addresses.items():
+            env_name = name.replace('DCMX', 'DCMX_').replace('Music', 'MUSIC_').upper()
+            if not env_name.endswith('_ADDRESS'):
+                env_name += '_ADDRESS'
+            logger.info(f"{env_name}={address}")
+        
+        logger.info("="*80 + "\n")
 
 
 def main():
-    """Main deployment function."""
-    logger.info("=== DCMX Smart Contract Deployment ===")
+    """Main entry point."""
+    import argparse
     
-    # Load configuration
+    parser = argparse.ArgumentParser(description='Deploy DCMX smart contracts')
+    parser.add_argument(
+        '--network',
+        choices=['mainnet', 'shasta', 'nile'],
+        help='TRON network to deploy to'
+    )
+    parser.add_argument(
+        '--output',
+        help='Output file for contract addresses (default: contract_addresses.json)'
+    )
+    
+    args = parser.parse_args()
+    
+    # Load or create config
     config = TronConfig.from_env()
-    logger.info(f"Network: {config.network}")
+    if args.network:
+        from dcmx.tron.config import NetworkType
+        config.network = NetworkType[args.network.upper()]
     
-    if not config.private_key:
-        logger.error("TRON_PRIVATE_KEY environment variable not set")
-        sys.exit(1)
+    # Confirm deployment
+    response = input(
+        f"Deploy contracts to {config.network.value}? "
+        f"(type 'yes' to confirm): "
+    )
+    if response.lower() != 'yes':
+        logger.info("Deployment cancelled")
+        return
     
-    # Initialize client
-    client = TronClient(config)
-    logger.info(f"Deployer address: {client.address}")
+    # Deploy contracts
+    deployer = ContractDeployer(config)
+    addresses = deployer.deploy_all()
     
-    # Check balance
-    balance = client.get_balance()
-    logger.info(f"Balance: {balance} TRX")
-    
-    if balance < 100:
-        logger.warning("Low balance! Deployment requires TRX for fees.")
-    
-    # Deploy contracts in order
-    deployed_contracts = {}
-    
-    try:
-        # 1. Deploy DCMXToken
-        logger.info("\n[1/5] Deploying DCMXToken...")
-        initial_supply = 0  # No initial supply, minted on demand
-        max_supply = 10_000_000_000 * 10**18  # 10 billion tokens
-        dcmx_token = deploy_contract(
-            client,
-            "DCMXToken",
-            [initial_supply, max_supply]
-        )
-        deployed_contracts["DCMXToken"] = dcmx_token
-        logger.info(f"DCMXToken deployed: {dcmx_token}")
-        
-        # 2. Deploy MusicNFT
-        logger.info("\n[2/5] Deploying MusicNFT...")
-        base_uri = "https://ipfs.io/ipfs/"  # IPFS base URI
-        music_nft = deploy_contract(
-            client,
-            "MusicNFT",
-            [base_uri]
-        )
-        deployed_contracts["MusicNFT"] = music_nft
-        logger.info(f"MusicNFT deployed: {music_nft}")
-        
-        # 3. Deploy ComplianceRegistry
-        logger.info("\n[3/5] Deploying ComplianceRegistry...")
-        compliance_registry = deploy_contract(
-            client,
-            "ComplianceRegistry",
-            []
-        )
-        deployed_contracts["ComplianceRegistry"] = compliance_registry
-        logger.info(f"ComplianceRegistry deployed: {compliance_registry}")
-        
-        # 4. Deploy RewardVault
-        logger.info("\n[4/5] Deploying RewardVault...")
-        reward_vault = deploy_contract(
-            client,
-            "RewardVault",
-            [dcmx_token]  # Needs DCMXToken address
-        )
-        deployed_contracts["RewardVault"] = reward_vault
-        logger.info(f"RewardVault deployed: {reward_vault}")
-        
-        # 5. Deploy RoyaltyDistributor
-        logger.info("\n[5/5] Deploying RoyaltyDistributor...")
-        platform_wallet = client.address  # Use deployer as platform wallet
-        royalty_distributor = deploy_contract(
-            client,
-            "RoyaltyDistributor",
-            [music_nft, dcmx_token, platform_wallet]
-        )
-        deployed_contracts["RoyaltyDistributor"] = royalty_distributor
-        logger.info(f"RoyaltyDistributor deployed: {royalty_distributor}")
-        
-        # Configure contracts
-        logger.info("\n=== Configuring Contracts ===")
-        
-        # CRITICAL: Add RewardVault as minter for DCMXToken
-        logger.info("Adding RewardVault as DCMXToken minter...")
-        logger.warning(
-            "IMPORTANT: After actual deployment, you MUST run:\n"
-            "  token.add_minter(reward_vault_address)\n"
-            "Otherwise reward claims will fail! This allows RewardVault to mint tokens."
-        )
-        
-        # TODO: Uncomment after implementing actual deployment
-        # tx_hash = client.send_contract_transaction(
-        #     dcmx_token,
-        #     "addMinter",
-        #     reward_vault
-        # )
-        # client.wait_for_transaction(tx_hash)
-        # logger.info("RewardVault configured as minter")
-        
-        # Save deployment info
-        deployment_file = Path(__file__).parent.parent / "deployment.json"
-        deployment_data = {
-            "network": config.network,
-            "deployer": client.address,
-            "deployed_at": str(datetime.now()),
-            "contracts": deployed_contracts,
-        }
-        
-        with open(deployment_file, 'w') as f:
-            json.dump(deployment_data, f, indent=2)
-        
-        logger.info(f"\n=== Deployment Complete ===")
-        logger.info(f"Deployment info saved to: {deployment_file}")
-        logger.info("\nDeployed Contracts:")
-        for name, address in deployed_contracts.items():
-            logger.info(f"  {name}: {address}")
-        
-        logger.info("\nSet these environment variables:")
-        for name, address in deployed_contracts.items():
-            env_var = name.upper().replace("DCMX", "").replace("MUSIC", "MUSIC_")
-            logger.info(f"  export {env_var}_ADDRESS={address}")
-        
-    except Exception as e:
-        logger.error(f"Deployment failed: {e}", exc_info=True)
+    if addresses:
+        deployer.save_addresses(args.output)
+        deployer.print_env_config()
+        logger.info("Deployment complete!")
+    else:
+        logger.error("Deployment failed")
         sys.exit(1)
 
 
-if __name__ == "__main__":
-    from datetime import datetime
+if __name__ == '__main__':
     main()

@@ -1,449 +1,669 @@
-# DCMX Smart Contracts Reference
+# DCMX Smart Contracts Documentation
 
 ## Overview
 
-DCMX uses five core smart contracts deployed on TRON blockchain to manage tokens, NFTs, compliance, rewards, and royalties.
+DCMX uses five core smart contracts deployed on the TRON blockchain to power the decentralized music platform.
 
 ## Contract Addresses
 
-### Shasta Testnet
+### Testnet (Shasta)
 ```
-DCMXToken: [PENDING DEPLOYMENT]
-MusicNFT: [PENDING DEPLOYMENT]
-ComplianceRegistry: [PENDING DEPLOYMENT]
-RewardVault: [PENDING DEPLOYMENT]
-RoyaltyDistributor: [PENDING DEPLOYMENT]
+DCMX_TOKEN_ADDRESS=<to be deployed>
+MUSIC_NFT_ADDRESS=<to be deployed>
+COMPLIANCE_REGISTRY_ADDRESS=<to be deployed>
+REWARD_VAULT_ADDRESS=<to be deployed>
+ROYALTY_DISTRIBUTOR_ADDRESS=<to be deployed>
 ```
 
 ### Mainnet
 ```
-[TO BE DEPLOYED]
-```
-
-## Contract Specifications
-
-### 1. DCMXToken (TRC-20)
-
-**File**: `dcmx/tron/contracts/DCMXToken.sol`
-
-**Purpose**: Platform utility token for rewards, governance, and platform fees.
-
-#### Constructor Parameters
-- `initialSupply` (uint256): Initial token supply (can be 0)
-- `maxSupply` (uint256): Maximum supply cap
-
-#### State Variables
-```solidity
-string public constant name = "DCMX Token";
-string public constant symbol = "DCMX";
-uint8 public constant decimals = 18;
-uint256 public totalSupply;
-uint256 public maxSupply;
-address public owner;
-mapping(address => bool) public minters;  // Authorized minters
-```
-
-#### Key Functions
-
-**Standard TRC-20**
-```solidity
-function transfer(address to, uint256 value) public returns (bool)
-function approve(address spender, uint256 value) public returns (bool)
-function transferFrom(address from, address to, uint256 value) public returns (bool)
-function balanceOf(address account) public view returns (uint256)
-function allowance(address owner, address spender) public view returns (uint256)
-```
-
-**Minting & Burning**
-```solidity
-// Mint new tokens (minters only)
-function mint(address to, uint256 amount) external onlyMinter returns (bool)
-
-// Burn tokens from caller
-function burn(uint256 amount) external returns (bool)
-```
-
-**Access Control**
-```solidity
-// Add authorized minter (owner only)
-function addMinter(address minter) external onlyOwner
-
-// Remove authorized minter (owner only)
-function removeMinter(address minter) external onlyOwner
-```
-
-#### Events
-```solidity
-event Transfer(address indexed from, address indexed to, uint256 value);
-event Approval(address indexed owner, address indexed spender, uint256 value);
-event Mint(address indexed to, uint256 amount);
-event Burn(address indexed from, uint256 amount);
-event MinterAdded(address indexed minter);
-event MinterRemoved(address indexed minter);
-```
-
-#### Usage Example
-```python
-from dcmx.tron.contracts import DCMXTokenContract
-
-# Initialize contract
-token = DCMXTokenContract(client, contract_address)
-
-# Check balance
-balance = token.balance_of(wallet_address)
-print(f"Balance: {balance / 10**18} DCMX")
-
-# Transfer tokens
-tx_hash = token.transfer(to_address, 100 * 10**18)  # 100 DCMX
-
-# Mint tokens (authorized minter only)
-tx_hash = token.mint(recipient, 1000 * 10**18)
+DCMX_TOKEN_ADDRESS=<to be deployed>
+MUSIC_NFT_ADDRESS=<to be deployed>
+COMPLIANCE_REGISTRY_ADDRESS=<to be deployed>
+REWARD_VAULT_ADDRESS=<to be deployed>
+ROYALTY_DISTRIBUTOR_ADDRESS=<to be deployed>
 ```
 
 ---
 
-### 2. MusicNFT (TRC-721)
+## 1. DCMXToken (TRC-20)
 
-**File**: `dcmx/tron/contracts/MusicNFT.sol`
+### Description
+Utility token for the DCMX platform. Used for rewards, governance, and platform fees.
 
-**Purpose**: Music rights NFTs with edition tracking and royalties.
+### Token Economics
+- **Name**: DCMX
+- **Symbol**: DCMX
+- **Decimals**: 18
+- **Max Supply**: 1,000,000,000 (1 billion)
+- **Initial Supply**: Set at deployment
+- **Type**: Utility token (NOT a security)
 
-#### Constructor Parameters
-- `baseURI` (string): Base URI for metadata (e.g., "https://ipfs.io/ipfs/")
+### Key Functions
 
-#### Metadata Structure
+#### `transfer(address to, uint256 value) → bool`
+Transfer tokens to another address.
+
+**Parameters**:
+- `to`: Recipient address
+- `value`: Amount to transfer (in smallest unit, 10^-18)
+
+**Returns**: `true` if successful
+
+**Events**: `Transfer(from, to, value)`
+
+**Example**:
 ```solidity
-struct MusicMetadata {
+// Transfer 100 DCMX tokens
+dcmxToken.transfer(recipientAddress, 100 * 10**18);
+```
+
+#### `approve(address spender, uint256 value) → bool`
+Approve another address to spend tokens on your behalf.
+
+**Parameters**:
+- `spender`: Address authorized to spend
+- `value`: Maximum amount they can spend
+
+**Returns**: `true` if successful
+
+**Events**: `Approval(owner, spender, value)`
+
+#### `transferFrom(address from, address to, uint256 value) → bool`
+Transfer tokens on behalf of another address (requires prior approval).
+
+**Parameters**:
+- `from`: Address to transfer from
+- `to`: Recipient address
+- `value`: Amount to transfer
+
+**Returns**: `true` if successful
+
+**Events**: `Transfer(from, to, value)`
+
+#### `mint(address to, uint256 value) → bool` (Admin only)
+Mint new tokens (up to max supply).
+
+**Parameters**:
+- `to`: Recipient address
+- `value`: Amount to mint
+
+**Returns**: `true` if successful
+
+**Events**: `Mint(to, value)`, `Transfer(0x0, to, value)`
+
+**Access**: Admin only
+
+#### `burn(uint256 value) → bool`
+Burn tokens from sender's balance.
+
+**Parameters**:
+- `value`: Amount to burn
+
+**Returns**: `true` if successful
+
+**Events**: `Burn(from, value)`, `Transfer(from, 0x0, value)`
+
+### Read Functions
+
+#### `balanceOf(address owner) → uint256`
+Get token balance of an address.
+
+#### `totalSupply() → uint256`
+Get total circulating supply.
+
+#### `allowance(address owner, address spender) → uint256`
+Get approved spending amount.
+
+### Events
+
+```solidity
+event Transfer(address indexed from, address indexed to, uint256 value);
+event Approval(address indexed owner, address indexed spender, uint256 value);
+event Mint(address indexed to, uint256 value);
+event Burn(address indexed from, uint256 value);
+event MintingFinished();
+```
+
+---
+
+## 2. MusicNFT (TRC-721)
+
+### Description
+NFT contract for music tracks with edition tracking and royalty support.
+
+### Key Functions
+
+#### `mint(...) → uint256` (Admin only)
+Mint a new music NFT.
+
+**Parameters**:
+```solidity
+address to,                 // NFT recipient
+string memory title,        // Track title
+string memory artist,       // Artist name
+string memory contentHash,  // Content hash (SHA-256)
+uint256 edition,            // Edition number (1-based)
+uint256 maxEditions,        // Total editions
+uint256 royaltyBps,         // Royalty in basis points (1000 = 10%)
+address royaltyRecipient    // Royalty recipient address
+```
+
+**Returns**: Token ID
+
+**Events**: `Minted(to, tokenId, contentHash)`, `Transfer(0x0, to, tokenId)`
+
+**Example**:
+```solidity
+uint256 tokenId = musicNFT.mint(
+    artistAddress,
+    "My Song",
+    "Artist Name",
+    "QmContentHash123...",
+    1,      // Edition 1
+    100,    // of 100
+    1000,   // 10% royalty
+    artistAddress
+);
+```
+
+#### `transfer(address to, uint256 tokenId)`
+Transfer NFT to another address.
+
+**Parameters**:
+- `to`: Recipient address
+- `tokenId`: NFT token ID
+
+**Events**: `Transfer(from, to, tokenId)`
+
+#### `approve(address to, uint256 tokenId)` (Owner only)
+Approve another address to transfer this NFT.
+
+**Parameters**:
+- `to`: Approved address
+- `tokenId`: NFT token ID
+
+**Events**: `Approval(owner, approved, tokenId)`
+
+#### `setApprovalForAll(address operator, bool approved)`
+Approve/revoke an operator for all your NFTs.
+
+**Parameters**:
+- `operator`: Operator address
+- `approved`: Approval status
+
+**Events**: `ApprovalForAll(owner, operator, approved)`
+
+### Read Functions
+
+#### `ownerOf(uint256 tokenId) → address`
+Get NFT owner.
+
+#### `balanceOf(address owner) → uint256`
+Get NFT count for address.
+
+#### `tokenMetadata(uint256 tokenId) → NFTMetadata`
+Get NFT metadata:
+```solidity
+struct NFTMetadata {
     string title;
     string artist;
-    string contentHash;      // SHA-256 of audio file
-    uint256 editionNumber;   // 1-based edition number
-    uint256 maxEditions;     // Total editions
-    address artistWallet;    // Original artist
-    uint96 royaltyBps;       // Royalty in basis points (1000 = 10%)
-    uint256 mintedAt;        // Mint timestamp
+    string contentHash;
+    uint256 edition;
+    uint256 maxEditions;
+    uint256 royaltyBps;
+    address royaltyRecipient;
 }
 ```
 
-#### Key Functions
+#### `royaltyInfo(uint256 tokenId, uint256 salePrice) → (address, uint256)`
+Calculate royalty for a sale (ERC-2981 compatible).
 
-**Minting**
+**Returns**: Recipient address and royalty amount
+
+**Example**:
 ```solidity
-function mintMusic(
-    address to,
-    string memory title,
-    string memory artist,
-    string memory contentHash,
-    uint256 editionNumber,
-    uint256 maxEditions,
-    uint96 royaltyBps
-) external returns (uint256)  // Returns token ID
+(address recipient, uint256 royaltyAmount) = 
+    musicNFT.royaltyInfo(tokenId, 1000000); // 1 TRX sale
 ```
 
-**Metadata**
-```solidity
-function getMetadata(uint256 tokenId) external view returns (
-    string memory title,
-    string memory artist,
-    string memory contentHash,
-    uint256 editionNumber,
-    uint256 maxEditions,
-    address artistWallet
-)
+#### `tokenURI(uint256 tokenId) → string`
+Get metadata URI (returns inline JSON for now).
 
-function tokenURI(uint256 tokenId) external view returns (string memory)
-```
+### Events
 
-**Standard TRC-721**
-```solidity
-function balanceOf(address owner) external view returns (uint256)
-function ownerOf(uint256 tokenId) public view returns (address)
-function transferFrom(address from, address to, uint256 tokenId) public
-function approve(address to, uint256 tokenId) external
-function setApprovalForAll(address operator, bool approved) external
-```
-
-**Royalties (ERC-2981)**
-```solidity
-function royaltyInfo(uint256 tokenId, uint256 salePrice) external view returns (
-    address receiver,    // Royalty recipient
-    uint256 royaltyAmount  // Amount in sale currency
-)
-```
-
-#### Events
 ```solidity
 event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
 event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId);
 event ApprovalForAll(address indexed owner, address indexed operator, bool approved);
-event MusicMinted(
-    uint256 indexed tokenId,
-    address indexed artist,
-    string title,
-    string contentHash,
-    uint256 editionNumber,
-    uint256 maxEditions
-);
-```
-
-#### Usage Example
-```python
-from dcmx.tron.contracts import MusicNFTContract
-
-# Initialize contract
-nft = MusicNFTContract(client, contract_address)
-
-# Mint music NFT
-tx_hash = nft.mint_music(
-    to_address=artist_wallet,
-    title="My Song",
-    artist="Artist Name",
-    content_hash="a1b2c3d4...",  # SHA-256 of audio
-    edition_number=1,
-    max_editions=100,
-    royalty_bps=1000  # 10% royalty
-)
-
-# Get metadata
-metadata = nft.get_metadata(token_id)
-print(f"Title: {metadata['title']}")
-print(f"Edition: {metadata['edition_number']}/{metadata['max_editions']}")
-
-# Get royalty info for sale
-recipient, amount = nft.royalty_info(token_id, sale_price=1000)
-print(f"Royalty: {amount} to {recipient}")
+event Minted(address indexed to, uint256 indexed tokenId, string contentHash);
 ```
 
 ---
 
-### 3. ComplianceRegistry
+## 3. ComplianceRegistry
 
-**File**: `dcmx/tron/contracts/ComplianceRegistry.sol`
+### Description
+Tracks legal document acceptances for GDPR/CCPA compliance.
 
-**Purpose**: Immutable legal document acceptance tracking on blockchain.
-
-#### Document Types
+### Document Types Enum
 ```solidity
 enum DocumentType {
-    TERMS_AND_CONDITIONS,    // 0
-    PRIVACY_POLICY,          // 1
-    COOKIE_POLICY,           // 2
-    NFT_AGREEMENT,           // 3
-    RISK_DISCLOSURE          // 4
+    TERMS_AND_CONDITIONS,  // 0
+    PRIVACY_POLICY,        // 1
+    COOKIE_POLICY,         // 2
+    NFT_AGREEMENT,         // 3
+    RISK_DISCLOSURE        // 4
 }
 ```
 
-#### Acceptance Record Structure
+### Key Functions
+
+#### `registerDocumentVersion(...)` (Admin only)
+Register a new document version.
+
+**Parameters**:
+```solidity
+DocumentType documentType,
+string memory version,      // e.g., "1.0", "2.0"
+bytes32 documentHash        // SHA-256 hash of document
+```
+
+**Events**: `DocumentVersionRegistered(documentType, version, documentHash)`
+
+#### `recordAcceptance(...)` (Admin only)
+Record user acceptance of a document.
+
+**Parameters**:
+```solidity
+address user,
+bytes32 documentHash,
+DocumentType documentType,
+string memory version,
+string memory ipAddress     // Hashed for privacy
+```
+
+**Events**: `AcceptanceRecorded(user, documentType, documentHash, version, timestamp)`
+
+#### `requestDataDeletion(string memory reason)`
+User requests data deletion.
+
+**Parameters**:
+- `reason`: Deletion reason
+
+**Events**: `DeletionRequested(user, timestamp, reason)`
+
+#### `processDeletionRequest(address user)` (Admin only)
+Mark deletion request as processed.
+
+**Parameters**:
+- `user`: User address
+
+**Events**: `DeletionProcessed(user, timestamp)`
+
+### Read Functions
+
+#### `verifyAcceptance(...) → bool`
+Verify if user has accepted a document.
+
+**Parameters**:
+```solidity
+address user,
+DocumentType documentType,
+bytes32 documentHash
+```
+
+**Returns**: `true` if accepted
+
+#### `getAcceptanceCount(address user, DocumentType documentType) → uint256`
+Get number of acceptances for user.
+
+#### `getAcceptance(...) → AcceptanceRecord`
+Get specific acceptance record.
+
+**Returns**:
 ```solidity
 struct AcceptanceRecord {
-    address wallet;
-    bytes32 documentHash;    // SHA-256 of document
-    string documentVersion;  // e.g., "1.0"
-    DocumentType docType;
-    uint256 acceptedAt;      // Timestamp
-    string ipAddress;        // Can be encrypted off-chain
+    bytes32 documentHash;
+    DocumentType documentType;
+    string version;
+    uint256 timestamp;
+    string ipAddress;
     bool isValid;
 }
 ```
 
-#### Key Functions
+#### `getAuditTrail(address user, DocumentType documentType) → AcceptanceRecord[]`
+Get full audit trail for user.
 
-**Document Management**
-```solidity
-// Register document version (owner only)
-function registerDocumentVersion(
-    DocumentType docType,
-    string memory version,
-    bytes32 documentHash
-) external onlyOwner
+### Events
 
-// Verify document hash
-function verifyDocumentHash(
-    DocumentType docType,
-    string memory version,
-    bytes32 providedHash
-) external view returns (bool)
-```
-
-**Acceptance Tracking**
-```solidity
-// Record user acceptance
-function recordAcceptance(
-    DocumentType docType,
-    string memory version,
-    bytes32 documentHash,
-    string memory ipAddress
-) external
-
-// Check if user has accepted
-function hasAccepted(
-    address wallet,
-    DocumentType docType,
-    string memory requiredVersion
-) external view returns (bool)
-
-// Get latest acceptance
-function getLatestAcceptance(address wallet, DocumentType docType) 
-    external view returns (
-        uint256 recordId,
-        bytes32 documentHash,
-        string memory version,
-        uint256 acceptedAt,
-        bool isValid
-    )
-```
-
-**GDPR/CCPA Compliance**
-```solidity
-// Request data deletion
-function requestDeletion(string memory requestType) external  // "GDPR" or "CCPA"
-
-// Mark deletion as completed (owner only)
-function completeDeletion(address wallet) external onlyOwner
-
-// Get deletion request status
-function getDeletionRequest(address wallet) external view returns (
-    uint256 requestedAt,
-    uint256 completedAt,
-    bool isCompleted,
-    string memory requestType
-)
-```
-
-#### Events
 ```solidity
 event AcceptanceRecorded(
-    uint256 indexed recordId,
-    address indexed wallet,
-    DocumentType indexed docType,
-    string version,
+    address indexed user,
+    DocumentType indexed documentType,
     bytes32 documentHash,
+    string version,
     uint256 timestamp
 );
-
-event DeletionRequested(
-    address indexed wallet,
-    string requestType,
-    uint256 timestamp
-);
-
-event DeletionCompleted(
-    address indexed wallet,
-    uint256 completedAt
-);
-```
-
-#### Usage Example
-```python
-from dcmx.tron.contracts import ComplianceRegistryContract
-import hashlib
-
-# Initialize contract
-compliance = ComplianceRegistryContract(client, contract_address)
-
-# Register document version (owner only)
-doc_content = "Terms and Conditions v1.0 text..."
-doc_hash = "0x" + hashlib.sha256(doc_content.encode()).hexdigest()
-tx_hash = compliance.register_document_version(
-    doc_type=0,  # TERMS_AND_CONDITIONS
-    version="1.0",
-    document_hash=doc_hash
-)
-
-# User accepts document
-tx_hash = compliance.record_acceptance(
-    doc_type=0,
-    version="1.0",
-    document_hash=doc_hash,
-    ip_address="192.168.1.1"
-)
-
-# Check acceptance
-has_accepted = compliance.has_accepted(wallet, doc_type=0, required_version="1.0")
-print(f"Accepted: {has_accepted}")
+event DeletionRequested(address indexed user, uint256 timestamp, string reason);
+event DeletionProcessed(address indexed user, uint256 timestamp);
+event DocumentVersionRegistered(DocumentType indexed documentType, string version, bytes32 documentHash);
 ```
 
 ---
 
-## Deployment Guide
+## 4. RewardVault
 
-### 1. Compile Contracts
+### Description
+Manages reward distribution for platform participation.
 
-```bash
-# Install Solidity compiler
-pip install py-solc-x
-
-# Compile contracts
-python -c "
-from solcx import compile_files
-contracts = compile_files([
-    'dcmx/tron/contracts/DCMXToken.sol',
-    'dcmx/tron/contracts/MusicNFT.sol',
-    'dcmx/tron/contracts/ComplianceRegistry.sol',
-    'dcmx/tron/contracts/RewardVault.sol',
-    'dcmx/tron/contracts/RoyaltyDistributor.sol',
-])
-"
+### Claim Types Enum
+```solidity
+enum ClaimType {
+    SHARING,    // 0: Content sharing rewards
+    LISTENING,  // 1: Listening rewards
+    BANDWIDTH   // 2: Network bandwidth rewards
+}
 ```
 
-### 2. Deploy to Testnet
+### Key Functions
 
-```bash
-# Set environment
-export TRON_NETWORK=shasta
-export TRON_PRIVATE_KEY=your_private_key
+#### `submitClaim(...) → uint256`
+Submit a reward claim.
 
-# Deploy
-python scripts/deploy_contracts.py
+**Parameters**:
+```solidity
+ClaimType claimType,
+bytes32 proofHash,      // Hash of proof data
+uint256 amount          // Reward amount in tokens
 ```
 
-### 3. Verify Deployment
+**Returns**: Claim ID
 
-```bash
-# Check contract on TronScan
-https://shasta.tronscan.org/#/contract/[CONTRACT_ADDRESS]
+**Events**: `ClaimSubmitted(claimId, user, claimType, amount, proofHash)`
+
+#### `verifyClaim(uint256 claimId, bool approved)` (Admin only)
+Verify or reject a claim.
+
+**Parameters**:
+- `claimId`: Claim ID
+- `approved`: Verification result
+
+**Events**: `ClaimVerified(claimId, approved)`
+
+#### `claimRewards(uint256 claimId)`
+Claim verified rewards (mints DCMX tokens).
+
+**Parameters**:
+- `claimId`: Claim ID
+
+**Events**: `RewardsClaimed(claimId, user, amount)`
+
+#### `allocatePool(ClaimType claimType, uint256 amount)` (Admin only)
+Set pool allocation.
+
+**Parameters**:
+- `claimType`: Pool type
+- `amount`: Allocation amount
+
+**Events**: `PoolAllocated(claimType, amount)`
+
+### Read Functions
+
+#### `getUserRewards(address user) → (uint256 pending, uint256 claimed)`
+Get user's reward status.
+
+**Returns**:
+- `pending`: Verified but unclaimed rewards
+- `claimed`: Total claimed rewards
+
+#### `getPoolStatus(ClaimType claimType) → (uint256 allocated, uint256 distributed, uint256 remaining)`
+Get pool status.
+
+### Events
+
+```solidity
+event ClaimSubmitted(
+    uint256 indexed claimId,
+    address indexed user,
+    ClaimType claimType,
+    uint256 amount,
+    bytes32 proofHash
+);
+event ClaimVerified(uint256 indexed claimId, bool approved);
+event RewardsClaimed(uint256 indexed claimId, address indexed user, uint256 amount);
+event PoolAllocated(ClaimType indexed claimType, uint256 amount);
 ```
 
-## Testing Contracts
+---
 
-```python
-# Test DCMXToken
-from dcmx.tron import TronClient, DCMXTokenContract
+## 5. RoyaltyDistributor
 
-client = TronClient()
-token = DCMXTokenContract(client, token_address)
+### Description
+Manages NFT sales and automatic royalty distribution.
 
-# Test minting
-assert token.total_supply() == 0
-tx = token.mint(test_address, 1000 * 10**18)
-client.wait_for_transaction(tx)
-assert token.balance_of(test_address) == 1000 * 10**18
+### Key Functions
+
+#### `setRoyaltySplit(...)` (Admin only)
+Configure royalty splits for an NFT.
+
+**Parameters**:
+```solidity
+address nftContract,
+uint256 nftTokenId,
+address[] memory recipients,
+uint256[] memory percentages  // Basis points (sum ≤ 10000)
 ```
+
+**Events**: `RoyaltySplitSet(nftContract, nftTokenId, recipient, percentage)` for each recipient
+
+**Example**:
+```solidity
+// 70% to artist, 20% to producer, 10% to platform
+address[] memory recipients = [artist, producer, platform];
+uint256[] memory percentages = [7000, 2000, 1000];
+
+royaltyDistributor.setRoyaltySplit(
+    nftContract,
+    tokenId,
+    recipients,
+    percentages
+);
+```
+
+#### `recordSale(...) → uint256` (Admin only)
+Record an NFT sale.
+
+**Parameters**:
+```solidity
+address nftContract,
+uint256 nftTokenId,
+address seller,
+address buyer,
+uint256 salePrice        // In SUN (10^-6 TRX)
+```
+
+**Returns**: Sale ID
+
+**Events**: `SaleRecorded(saleId, nftContract, nftTokenId, seller, buyer, salePrice)`
+
+#### `distributeRoyalties(uint256 saleId)` (Admin only)
+Distribute royalties for a sale.
+
+**Parameters**:
+- `saleId`: Sale ID
+
+**Events**: `RoyaltiesDistributed(saleId, totalRoyalties)`, `RoyaltyPaid(recipient, amount)` for each recipient
+
+#### `withdrawRoyalties()`
+Withdraw pending royalties.
+
+**Events**: `Withdrawal(recipient, amount)`
+
+### Read Functions
+
+#### `getRoyaltyInfo(address nftContract, uint256 nftTokenId) → RoyaltySplit[]`
+Get royalty configuration.
+
+**Returns**:
+```solidity
+struct RoyaltySplit {
+    address recipient;
+    uint256 percentage;  // Basis points
+}
+```
+
+#### `getPendingRoyalties(address recipient) → uint256`
+Get pending royalty balance.
+
+#### `getSale(uint256 saleId) → Sale`
+Get sale details.
+
+**Returns**:
+```solidity
+struct Sale {
+    uint256 nftTokenId;
+    address nftContract;
+    address seller;
+    address buyer;
+    uint256 salePrice;
+    uint256 timestamp;
+    bool royaltiesDistributed;
+}
+```
+
+### Events
+
+```solidity
+event SaleRecorded(
+    uint256 indexed saleId,
+    address indexed nftContract,
+    uint256 indexed nftTokenId,
+    address seller,
+    address buyer,
+    uint256 salePrice
+);
+event RoyaltiesDistributed(uint256 indexed saleId, uint256 totalRoyalties);
+event RoyaltyPaid(address indexed recipient, uint256 amount);
+event Withdrawal(address indexed recipient, uint256 amount);
+event RoyaltySplitSet(
+    address indexed nftContract,
+    uint256 indexed nftTokenId,
+    address recipient,
+    uint256 percentage
+);
+```
+
+---
 
 ## Security Considerations
 
-1. **Access Control**: Only owner can add minters, register documents, etc.
-2. **Supply Limits**: DCMXToken has max supply to prevent inflation
-3. **Immutability**: Compliance records cannot be modified once created
-4. **Royalty Enforcement**: Automated royalty payments on NFT sales
-5. **Pausability**: Consider adding pause mechanisms for emergency stops
+### Access Control
 
-## Gas Optimization
+All contracts use simple admin-based access control:
+```solidity
+address public admin;
 
-- Use `external` for functions called externally only
-- Pack struct variables efficiently
+modifier onlyAdmin() {
+    require(msg.sender == admin, "Only admin");
+    _;
+}
+```
+
+**Recommendation**: For production, upgrade to role-based access control (e.g., OpenZeppelin's AccessControl).
+
+### Input Validation
+
+All contracts validate inputs:
+- Non-zero addresses
+- Valid enum values
+- Amount limits
+- Array length matches
+
+### Reentrancy Protection
+
+Contracts follow checks-effects-interactions pattern:
+1. Check conditions
+2. Update state
+3. External calls
+
+**Note**: For additional safety, consider adding OpenZeppelin's ReentrancyGuard.
+
+### Integer Overflow
+
+Solidity 0.8+ has built-in overflow protection.
+
+### Gas Optimization
+
+- Use `uint256` (cheaper than smaller types in storage)
 - Batch operations where possible
-- Use events instead of storage for historical data
+- Minimize storage writes
+- Use events for historical data
 
-## Upgradeability
+## Testing
 
-Contracts are **not upgradeable** by design for:
-- Immutability guarantees
-- User trust
-- Security
+### Unit Tests
 
-If upgrades needed:
-1. Deploy new version
-2. Migrate data
-3. Update client configuration
-4. Maintain old contracts for historical data
+Test each contract function:
+```javascript
+// Example with TronBox
+contract('DCMXToken', (accounts) => {
+    it('should transfer tokens correctly', async () => {
+        const token = await DCMXToken.deployed();
+        await token.transfer(accounts[1], 100);
+        const balance = await token.balanceOf(accounts[1]);
+        assert.equal(balance, 100);
+    });
+});
+```
+
+### Integration Tests
+
+Test contract interactions:
+- Mint NFT → Record Sale → Distribute Royalties
+- Submit Claim → Verify → Claim Rewards
+- Register Document → Record Acceptance → Verify
+
+### Mainnet Testing
+
+1. Deploy to testnet (Shasta)
+2. Test all functions
+3. Monitor for 1 week
+4. Perform security audit
+5. Deploy to mainnet
+
+## Upgradability
+
+Current contracts are **not upgradable** (immutable).
+
+**Pros**: Maximum trust and security
+**Cons**: Cannot fix bugs or add features
+
+**For Future**: Consider using proxy patterns (e.g., UUPS) for upgradability while maintaining security.
+
+## Gas Costs (Estimated)
+
+| Operation | Estimated Gas | TRX Cost (approx) |
+|-----------|---------------|-------------------|
+| Token Transfer | ~20,000 | ~0.001 TRX |
+| NFT Mint | ~150,000 | ~0.008 TRX |
+| Submit Claim | ~100,000 | ~0.005 TRX |
+| Record Acceptance | ~80,000 | ~0.004 TRX |
+| Record Sale | ~120,000 | ~0.006 TRX |
+
+**Note**: Actual costs depend on network congestion and contract complexity.
+
+## Audit Status
+
+- [ ] Internal audit complete
+- [ ] External audit scheduled
+- [ ] Bug bounty program active
+- [ ] Mainnet deployment
+
+## Resources
+
+- **TRON Contract Standards**: https://developers.tron.network/docs/trc20
+- **Solidity Documentation**: https://docs.soliditylang.org/
+- **OpenZeppelin Contracts**: https://docs.openzeppelin.com/contracts/
+- **Security Best Practices**: https://consensys.github.io/smart-contract-best-practices/

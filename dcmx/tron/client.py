@@ -1,8 +1,4 @@
-"""
-TRON Client Wrapper
-
-Provides a high-level interface for interacting with TRON blockchain.
-"""
+"""TRON blockchain client wrapper for DCMX."""
 
 import logging
 from typing import Optional, Dict, Any, List
@@ -10,340 +6,245 @@ from tronpy import Tron
 from tronpy.keys import PrivateKey
 from tronpy.providers import HTTPProvider
 
-from .config import TronConfig, NetworkConfig, NETWORKS
+from .config import TronConfig, NetworkType
 
 logger = logging.getLogger(__name__)
 
 
 class TronClient:
-    """
-    TRON blockchain client wrapper.
-    
-    Provides simplified interface for:
-    - Wallet management
-    - Transaction signing and sending
-    - Contract interaction
-    - Event querying
-    """
+    """Wrapper for TRON blockchain interaction using tronpy."""
     
     def __init__(self, config: Optional[TronConfig] = None):
         """
         Initialize TRON client.
         
         Args:
-            config: TRON configuration (or load from env)
+            config: TRON configuration, defaults to environment config
         """
-        if config is None:
-            from .config import get_config
-            config = get_config()
-        
-        self.config = config
-        self.network_config = config.get_network_config()
+        self.config = config or TronConfig.from_env()
+        self.config.validate()
         
         # Initialize tronpy client
-        provider = HTTPProvider(
-            api_key=config.api_key,
-            endpoint_uri=self.network_config.full_node
+        if self.config.network == NetworkType.MAINNET:
+            self.tron = Tron(network='mainnet')
+        else:
+            # Use custom provider for testnets
+            provider = HTTPProvider(
+                self.config.rpc_endpoint,
+                api_key=self.config.api_key
+            )
+            self.tron = Tron(provider=provider)
+        
+        # Load private key
+        self.private_key = PrivateKey(bytes.fromhex(self.config.private_key))
+        self.address = self.private_key.public_key.to_base58check_address()
+        
+        logger.info(
+            f"TronClient initialized: network={self.config.network.value}, "
+            f"address={self.address}"
         )
-        
-        self.client = Tron(provider=provider, network=config.network)
-        
-        # Load private key if provided
-        self.private_key = None
-        self.address = None
-        if config.private_key:
-            self.private_key = PrivateKey(bytes.fromhex(config.private_key))
-            self.address = self.private_key.public_key.to_base58check_address()
-            logger.info(f"Loaded wallet: {self.address}")
-        
-        logger.info(f"Connected to {self.network_config.name}")
     
-    def get_balance(self, address: Optional[str] = None) -> float:
+    def get_balance(self, address: Optional[str] = None) -> int:
         """
         Get TRX balance for an address.
         
         Args:
-            address: Address to check (or use loaded wallet)
+            address: Address to check, defaults to client address
             
         Returns:
-            Balance in TRX
+            Balance in SUN (1 TRX = 1,000,000 SUN)
         """
         addr = address or self.address
-        if not addr:
-            raise ValueError("No address provided")
-        
-        balance_sun = self.client.get_account_balance(addr)
-        return balance_sun / 1_000_000  # Convert from SUN to TRX
+        try:
+            balance = self.tron.get_account_balance(addr)
+            return int(balance * 1_000_000)  # Convert to SUN
+        except Exception as e:
+            logger.error(f"Failed to get balance for {addr}: {e}")
+            return 0
     
-    def get_account_resource(self, address: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Get account resource info (bandwidth, energy).
-        
-        Args:
-            address: Address to check
-            
-        Returns:
-            Resource information
-        """
-        addr = address or self.address
-        if not addr:
-            raise ValueError("No address provided")
-        
-        return self.client.get_account_resource(addr)
-    
-    def send_trx(self, to_address: str, amount_trx: float) -> str:
-        """
-        Send TRX to an address.
-        
-        Args:
-            to_address: Recipient address
-            amount_trx: Amount in TRX
-            
-        Returns:
-            Transaction hash
-        """
-        if not self.private_key:
-            raise ValueError("No private key loaded")
-        
-        amount_sun = int(amount_trx * 1_000_000)
-        
-        txn = (
-            self.client.trx.transfer(self.address, to_address, amount_sun)
-            .build()
-            .sign(self.private_key)
-        )
-        
-        result = txn.broadcast()
-        tx_hash = result.get("txid", "")
-        
-        logger.info(f"Sent {amount_trx} TRX to {to_address}, tx: {tx_hash}")
-        return tx_hash
-    
-    def get_contract(self, contract_address: str):
+    def get_contract(self, address: str) -> Any:
         """
         Get contract instance.
         
         Args:
-            contract_address: Contract address
+            address: Contract address
             
         Returns:
-            Contract object
+            Contract instance
         """
-        return self.client.get_contract(contract_address)
+        return self.tron.get_contract(address)
     
-    def call_contract(
+    def send_transaction(
         self,
-        contract_address: str,
-        function_name: str,
-        *args,
-        **kwargs
-    ) -> Any:
+        to_address: str,
+        amount_sun: int,
+        memo: Optional[str] = None
+    ) -> str:
         """
-        Call a contract view function (read-only).
+        Send TRX to address.
         
         Args:
-            contract_address: Contract address
-            function_name: Function name
-            *args: Function arguments
-            **kwargs: Additional parameters
+            to_address: Recipient address
+            amount_sun: Amount in SUN
+            memo: Optional transaction memo
             
         Returns:
-            Function result
+            Transaction hash
         """
-        contract = self.get_contract(contract_address)
-        return contract.functions[function_name](*args, **kwargs)
+        try:
+            txn = (
+                self.tron.trx.transfer(self.address, to_address, amount_sun)
+                .memo(memo or "")
+                .build()
+                .sign(self.private_key)
+            )
+            result = txn.broadcast()
+            
+            tx_hash = result.get('txid')
+            logger.info(f"Transaction sent: {tx_hash}")
+            return tx_hash
+            
+        except Exception as e:
+            logger.error(f"Failed to send transaction: {e}")
+            raise
     
-    def send_contract_transaction(
+    def call_contract_function(
         self,
         contract_address: str,
         function_name: str,
         *args,
         fee_limit: int = 100_000_000,  # 100 TRX default
         **kwargs
-    ) -> str:
+    ) -> Any:
         """
-        Send a contract transaction (state-changing).
+        Call a contract function.
         
         Args:
             contract_address: Contract address
-            function_name: Function name
+            function_name: Function name to call
             *args: Function arguments
             fee_limit: Maximum fee in SUN
-            **kwargs: Additional parameters
+            **kwargs: Additional transaction parameters
             
         Returns:
-            Transaction hash
+            Transaction result
         """
-        if not self.private_key:
-            raise ValueError("No private key loaded")
-        
-        contract = self.get_contract(contract_address)
-        
-        txn = (
-            contract.functions[function_name](*args, **kwargs)
-            .with_owner(self.address)
-            .fee_limit(fee_limit)
-            .build()
-            .sign(self.private_key)
-        )
-        
-        result = txn.broadcast()
-        tx_hash = result.get("txid", "")
-        
-        logger.info(f"Contract transaction: {function_name}, tx: {tx_hash}")
-        return tx_hash
+        try:
+            contract = self.get_contract(contract_address)
+            
+            # Build transaction
+            txn = (
+                contract.functions[function_name](*args)
+                .with_owner(self.address)
+                .fee_limit(fee_limit)
+                .build()
+                .sign(self.private_key)
+            )
+            
+            # Broadcast
+            result = txn.broadcast()
+            tx_hash = result.get('txid')
+            
+            logger.info(
+                f"Contract call: {function_name} on {contract_address}, "
+                f"tx={tx_hash}"
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Contract call failed: {e}")
+            raise
     
-    def wait_for_transaction(
-        self,
-        tx_hash: str,
-        timeout: int = 30,
-        interval: int = 2
-    ) -> Dict[str, Any]:
+    def get_transaction(self, tx_hash: str) -> Optional[Dict[str, Any]]:
         """
-        Wait for transaction to be confirmed.
+        Get transaction details.
         
         Args:
             tx_hash: Transaction hash
-            timeout: Maximum wait time in seconds
-            interval: Check interval in seconds
             
         Returns:
-            Transaction receipt
+            Transaction data or None if not found
         """
-        import time
+        try:
+            return self.tron.get_transaction(tx_hash)
+        except Exception as e:
+            logger.warning(f"Failed to get transaction {tx_hash}: {e}")
+            return None
+    
+    def get_transaction_info(self, tx_hash: str) -> Optional[Dict[str, Any]]:
+        """
+        Get transaction execution info.
         
-        start_time = time.time()
-        
-        while time.time() - start_time < timeout:
-            try:
-                receipt = self.client.get_transaction_info(tx_hash)
-                if receipt:
-                    logger.info(f"Transaction confirmed: {tx_hash}")
-                    return receipt
-            except Exception as e:
-                logger.debug(f"Transaction not yet confirmed: {e}")
+        Args:
+            tx_hash: Transaction hash
             
-            time.sleep(interval)
-        
-        raise TimeoutError(f"Transaction not confirmed after {timeout}s: {tx_hash}")
+        Returns:
+            Transaction info or None
+        """
+        try:
+            return self.tron.get_transaction_info(tx_hash)
+        except Exception as e:
+            logger.warning(f"Failed to get transaction info {tx_hash}: {e}")
+            return None
     
     def get_events_by_contract(
         self,
         contract_address: str,
         event_name: Optional[str] = None,
-        block_number: Optional[int] = None,
-        min_block: Optional[int] = None,
-        max_block: Optional[int] = None,
-        limit: int = 200
+        block_number: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
-        Get events emitted by a contract.
+        Get events from a contract.
         
         Args:
             contract_address: Contract address
-            event_name: Filter by event name
-            block_number: Specific block number
-            min_block: Minimum block number
-            max_block: Maximum block number
-            limit: Maximum number of results
+            event_name: Optional specific event name
+            block_number: Optional specific block number
             
         Returns:
             List of events
         """
-        params = {
-            "limit": limit,
-        }
+        try:
+            # Get events (tronpy doesn't have direct event querying,
+            # would need to query transactions and parse logs)
+            # This is a placeholder for the indexer to implement
+            logger.warning("Event querying requires custom implementation")
+            return []
+            
+        except Exception as e:
+            logger.error(f"Failed to get events: {e}")
+            return []
+    
+    def get_block(self, block_number: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """
+        Get block data.
         
-        if event_name:
-            params["event_name"] = event_name
-        if block_number:
-            params["block_number"] = block_number
-        if min_block:
-            params["min_block_timestamp"] = min_block
-        if max_block:
-            params["max_block_timestamp"] = max_block
-        
-        # Use event server API
-        url = f"{self.network_config.event_server}/v1/contracts/{contract_address}/events"
-        
-        import requests
-        headers = {}
-        if self.config.api_key:
-            headers["TRON-PRO-API-KEY"] = self.config.api_key
-        
-        response = requests.get(url, params=params, headers=headers)
-        response.raise_for_status()
-        
-        data = response.json()
-        return data.get("data", [])
+        Args:
+            block_number: Block number, defaults to latest
+            
+        Returns:
+            Block data or None
+        """
+        try:
+            if block_number is None:
+                return self.tron.get_latest_block()
+            else:
+                return self.tron.get_block(block_number)
+        except Exception as e:
+            logger.error(f"Failed to get block: {e}")
+            return None
     
     def get_latest_block_number(self) -> int:
         """
-        Get the latest block number.
+        Get latest block number.
         
         Returns:
-            Block number
-        """
-        block = self.client.get_latest_solid_block()
-        return block.get("block_header", {}).get("raw_data", {}).get("number", 0)
-    
-    def get_block(self, block_number: int) -> Dict[str, Any]:
-        """
-        Get block by number.
-        
-        Args:
-            block_number: Block number
-            
-        Returns:
-            Block data
-        """
-        return self.client.get_block(block_number)
-    
-    def to_base58(self, hex_address: str) -> str:
-        """
-        Convert hex address to base58.
-        
-        Args:
-            hex_address: Hex format address
-            
-        Returns:
-            Base58 format address
-        """
-        return self.client.to_base58check_address(hex_address)
-    
-    def to_hex(self, base58_address: str) -> str:
-        """
-        Convert base58 address to hex.
-        
-        Args:
-            base58_address: Base58 format address
-            
-        Returns:
-            Hex format address
-        """
-        return self.client.to_hex_address(base58_address)
-    
-    def is_connected(self) -> bool:
-        """
-        Check if client is connected to network.
-        
-        Returns:
-            True if connected
+            Latest block number
         """
         try:
-            self.get_latest_block_number()
-            return True
-        except Exception:
-            return False
-    
-    def get_explorer_url(self, tx_hash: str) -> str:
-        """
-        Get block explorer URL for a transaction.
-        
-        Args:
-            tx_hash: Transaction hash
-            
-        Returns:
-            Explorer URL
-        """
-        return f"{self.network_config.explorer_url}/#/transaction/{tx_hash}"
+            block = self.tron.get_latest_block()
+            return block.get('block_header', {}).get('raw_data', {}).get('number', 0)
+        except Exception as e:
+            logger.error(f"Failed to get latest block number: {e}")
+            return 0

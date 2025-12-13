@@ -1,448 +1,220 @@
-# DCMX Blockchain Integration Guide
+# Blockchain Integration Guide
 
 ## Quick Start
 
-### Prerequisites
-- Python 3.8+
-- PostgreSQL 13+
-- TRON wallet with TRX for gas fees
-
-### Environment Setup
+### 1. Setup Environment
 
 ```bash
-# Clone repository
-git clone https://github.com/DCMX-Protocol/DCMX.git
-cd DCMX
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
+# Copy environment template
 cp .env.example .env
-# Edit .env with your configuration
+
+# Edit .env with your values
+vim .env
 ```
 
-### Environment Variables
-
+Required variables:
 ```bash
-# TRON Configuration
-TRON_NETWORK=shasta              # or mainnet
-TRON_PRIVATE_KEY=your_hex_key    # Without 0x prefix
-TRONGRID_API_KEY=your_api_key    # Optional, for higher rate limits
-
-# Contract Addresses (set after deployment)
-DCMX_TOKEN_ADDRESS=
-MUSIC_NFT_ADDRESS=
-COMPLIANCE_REGISTRY_ADDRESS=
-REWARD_VAULT_ADDRESS=
-ROYALTY_DISTRIBUTOR_ADDRESS=
-
-# Database Configuration
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=dcmx
-DB_USER=dcmx
-DB_PASSWORD=your_secure_password
-DB_POOL_SIZE=10
-DB_MAX_OVERFLOW=20
-```
-
-## Deployment Steps
-
-### 1. Deploy Smart Contracts
-
-```bash
-# Deploy to Shasta testnet
-python scripts/deploy_contracts.py
-
-# Output will include contract addresses
-# Update .env with these addresses
+TRON_NETWORK=shasta
+TRON_PRIVATE_KEY=your_64_char_hex_key
+DATABASE_URL=postgresql://user:pass@localhost/dcmx_main
 ```
 
 ### 2. Initialize Database
 
 ```bash
-# Create database tables
 python scripts/initialize_db.py
-
-# Verify tables created
-psql -h localhost -U dcmx -d dcmx -c "\dt"
 ```
 
-### 3. Start Event Indexer
+### 3. Deploy Contracts (Testnet)
 
 ```bash
-# Start indexer daemon
-python scripts/start_indexer.py --poll-interval 30
-
-# Or run as systemd service (production)
-sudo systemctl start dcmx-indexer
+python scripts/deploy_contracts.py --network shasta
 ```
 
-### 4. Verify Integration
+### 4. Start Event Indexer
 
-```python
-from dcmx.tron import TronClient, DCMXTokenContract
-from dcmx.database import get_database
-
-# Test blockchain connection
-client = TronClient()
-assert client.is_connected()
-
-# Test database connection
-db = get_database()
-assert db.test_connection()
-
-# Test contract interaction
-token = DCMXTokenContract(client, token_address)
-supply = token.total_supply()
-print(f"Total supply: {supply / 10**18} DCMX")
+```bash
+python scripts/start_indexer.py
 ```
 
-## Integration Patterns
+### 5. Run API Server
 
-### Pattern 1: Mint NFT with Indexing
+```bash
+# Add web3 router to your FastAPI app
+from dcmx.api.web3_endpoints import web3_router
+app.include_router(web3_router)
+
+# Run server
+uvicorn dcmx.api.server:app --reload
+```
+
+## API Usage Examples
+
+### Mint NFT
+
+```bash
+curl -X POST http://localhost:8000/api/v1/nft/mint \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to_address": "TRON_ADDRESS_HERE",
+    "title": "My Song",
+    "artist": "Artist Name",
+    "content_hash": "QmHash...",
+    "edition": 1,
+    "max_editions": 100,
+    "royalty_bps": 1000
+  }'
+```
+
+### Submit Reward Claim
+
+```bash
+curl -X POST http://localhost:8000/api/v1/reward/claim \
+  -H "Content-Type: application/json" \
+  -d '{
+    "claim_type": "BANDWIDTH",
+    "proof_data": {"bytes_served": 1000000, "uptime": 86400},
+    "amount": 100000000000000000000
+  }'
+```
+
+### Check Blockchain Status
+
+```bash
+curl http://localhost:8000/api/v1/blockchain/status
+```
+
+## Python Integration
+
+### Basic Usage
 
 ```python
-from dcmx.tron.contracts import MusicNFTContract
-from dcmx.database.sync import BlockchainSync
+from dcmx.tron.contracts import ContractManager
+from dcmx.tron.config import TronConfig
 
-# 1. Mint NFT on blockchain
-nft = MusicNFTContract(client, nft_address)
-tx_hash = nft.mint_music(
-    to_address=artist_wallet,
-    title="My Song",
-    artist="Artist Name",
-    content_hash=audio_hash,
-    edition_number=1,
+# Initialize
+config = TronConfig.from_env()
+manager = ContractManager(config)
+
+# Mint NFT
+result = manager.nft.mint(
+    to_address="T...",
+    title="Song Title",
+    artist="Artist",
+    content_hash="hash",
+    edition=1,
     max_editions=100,
     royalty_bps=1000
 )
 
-# 2. Wait for confirmation
-client.wait_for_transaction(tx_hash)
-
-# 3. Sync to database
-sync = BlockchainSync(client)
-sync.sync_events(nft_address)
-
-# 4. Query from database
-from dcmx.database.queries import DatabaseQueries
-nfts = DatabaseQueries.get_nfts_by_artist(artist_wallet)
+print(f"TX: {result.transaction_hash}")
 ```
 
-### Pattern 2: Record Legal Acceptance
+### Event Listening
 
 ```python
-from dcmx.tron.contracts import ComplianceRegistryContract
-import hashlib
+from dcmx.tron.indexer import BlockchainIndexer
 
-# 1. Calculate document hash
-document_content = "Terms and Conditions v1.0..."
-doc_hash = "0x" + hashlib.sha256(document_content.encode()).hexdigest()
+indexer = BlockchainIndexer(start_block=0)
+await indexer.start()
+```
 
-# 2. Record on blockchain
-compliance = ComplianceRegistryContract(client, compliance_address)
-tx_hash = compliance.record_acceptance(
-    doc_type=0,  # TERMS_AND_CONDITIONS
-    version="1.0",
+### Database Queries
+
+```python
+from dcmx.database.connection import get_database
+from dcmx.database.models import NFTIndex
+
+db = get_database()
+
+with db.get_session() as session:
+    nfts = session.query(NFTIndex).filter(
+        NFTIndex.artist == "Artist Name"
+    ).all()
+```
+
+## Legal Compliance Integration
+
+### Record Acceptance
+
+```python
+from dcmx.tron.contracts import ContractManager
+from dcmx.tron import utils
+
+manager = ContractManager()
+
+# Compute document hash
+doc_hash = utils.compute_document_hash(document_content)
+
+# Record on blockchain
+result = manager.compliance.record_acceptance(
+    user_address="T...",
     document_hash=doc_hash,
-    ip_address=user_ip
-)
-
-# 3. Wait for confirmation
-client.wait_for_transaction(tx_hash)
-
-# 4. Query acceptance status
-has_accepted = compliance.has_accepted(
-    wallet=user_wallet,
-    doc_type=0,
-    required_version="1.0"
+    document_type=0,  # TERMS
+    version="1.0",
+    ip_address=utils.compute_document_hash("ip_address")
 )
 ```
 
-### Pattern 3: Process Reward Claim
+### Verify Acceptance
 
 ```python
-from dcmx.tron.contracts import RewardVaultContract
-
-# 1. User submits claim
-vault = RewardVaultContract(client, vault_address)
-tx_hash = vault.submit_claim(
-    reward_type=1,  # LISTENING
-    amount=10 * 10**18,  # 10 DCMX
-    proof_hash="0xabcd..."  # Hash of activity proof
+verified = manager.compliance.verify_acceptance(
+    user_address="T...",
+    document_type=0,
+    document_hash=doc_hash
 )
-
-claim_id = get_claim_id_from_tx(tx_hash)
-
-# 2. Verifier approves claim
-tx_hash = vault.verify_claim(claim_id, approved=True)
-
-# 3. Tokens automatically minted to user
-# 4. Check claim status
-claim = vault.get_claim(claim_id)
-assert claim['claimed'] == True
-```
-
-## API Integration
-
-### FastAPI Endpoints
-
-```python
-from fastapi import FastAPI
-from dcmx.tron import TronClient, MusicNFTContract
-from dcmx.database.queries import DatabaseQueries
-
-app = FastAPI()
-
-@app.post("/api/v1/nft/mint")
-async def mint_nft(
-    title: str,
-    artist: str,
-    content_hash: str,
-    edition: int,
-    max_editions: int
-):
-    # Mint on blockchain
-    nft = MusicNFTContract(client, nft_address)
-    tx_hash = nft.mint_music(...)
-    
-    # Wait for confirmation
-    client.wait_for_transaction(tx_hash)
-    
-    # Sync to database
-    sync.sync_events(nft_address)
-    
-    return {"tx_hash": tx_hash, "status": "minted"}
-
-@app.get("/api/v1/nft/{token_id}")
-async def get_nft(token_id: int):
-    # Query from database (fast)
-    nft = DatabaseQueries.get_nft_by_token_id(token_id, nft_address)
-    
-    if not nft:
-        raise HTTPException(404, "NFT not found")
-    
-    return {
-        "token_id": nft.token_id,
-        "title": nft.title,
-        "artist": nft.artist,
-        "owner": nft.owner_wallet,
-        "edition": f"{nft.edition_number}/{nft.max_editions}"
-    }
-```
-
-## Testing
-
-### Unit Tests
-
-```python
-import pytest
-from dcmx.tron import TronClient
-from dcmx.tron.contracts import DCMXTokenContract
-
-@pytest.fixture
-def client():
-    return TronClient()
-
-@pytest.fixture
-def token(client):
-    return DCMXTokenContract(client, token_address)
-
-def test_token_balance(token):
-    balance = token.balance_of(test_wallet)
-    assert balance >= 0
-
-def test_token_transfer(token, client):
-    initial_balance = token.balance_of(recipient)
-    
-    tx_hash = token.transfer(recipient, 100 * 10**18)
-    client.wait_for_transaction(tx_hash)
-    
-    final_balance = token.balance_of(recipient)
-    assert final_balance == initial_balance + 100 * 10**18
-```
-
-### Integration Tests
-
-```python
-def test_nft_mint_and_query():
-    # 1. Mint NFT
-    nft = MusicNFTContract(client, nft_address)
-    tx_hash = nft.mint_music(...)
-    client.wait_for_transaction(tx_hash)
-    
-    # 2. Sync to database
-    sync = BlockchainSync(client)
-    sync.sync_events(nft_address)
-    
-    # 3. Query from database
-    nfts = DatabaseQueries.get_nfts_by_artist(artist_wallet)
-    assert len(nfts) > 0
-    assert nfts[0].title == "My Song"
-```
-
-## Monitoring
-
-### Health Checks
-
-```python
-from dcmx.tron import TronClient
-from dcmx.database import test_connection
-
-def health_check():
-    checks = {
-        "blockchain": False,
-        "database": False,
-        "indexer_lag": 0
-    }
-    
-    # Check blockchain
-    try:
-        client = TronClient()
-        checks["blockchain"] = client.is_connected()
-    except:
-        pass
-    
-    # Check database
-    checks["database"] = test_connection()
-    
-    # Check indexer lag
-    if checks["blockchain"] and checks["database"]:
-        latest_block = client.get_latest_block_number()
-        last_indexed = get_last_indexed_block()
-        checks["indexer_lag"] = latest_block - last_indexed
-    
-    return checks
-```
-
-### Metrics
-
-```python
-from prometheus_client import Counter, Gauge
-
-# Define metrics
-events_indexed = Counter('dcmx_events_indexed_total', 'Total events indexed')
-indexer_lag = Gauge('dcmx_indexer_lag_blocks', 'Indexer lag in blocks')
-contract_calls = Counter('dcmx_contract_calls_total', 'Contract calls', ['contract'])
-
-# Update metrics
-events_indexed.inc(count)
-indexer_lag.set(lag)
-contract_calls.labels(contract='DCMXToken').inc()
 ```
 
 ## Troubleshooting
 
-### Issue: Indexer Not Syncing
+### Contract Not Found
 
-**Symptoms**: No new events in database despite blockchain activity
+Check contract addresses in .env:
+```bash
+echo $MUSIC_NFT_ADDRESS
+```
 
-**Solutions**:
-1. Check indexer logs: `tail -f /var/log/dcmx-indexer.log`
-2. Verify TRON connection: `client.is_connected()`
-3. Check contract addresses in .env
-4. Restart indexer: `systemctl restart dcmx-indexer`
+### Indexer Not Syncing
 
-### Issue: Transaction Failed
+Check logs:
+```bash
+tail -f /var/log/dcmx/indexer.log
+```
 
-**Symptoms**: Transaction reverted or insufficient energy
+Restart indexer:
+```bash
+python scripts/start_indexer.py
+```
 
-**Solutions**:
-1. Check TRX balance: `client.get_balance()`
-2. Check energy/bandwidth: `client.get_account_resource()`
-3. Increase fee limit in transaction
-4. Wait for network congestion to clear
+### Database Connection Failed
 
-### Issue: Database Connection Failed
+Test connection:
+```bash
+psql $DATABASE_URL -c "SELECT 1"
+```
 
-**Symptoms**: Cannot connect to PostgreSQL
+### Transaction Failed
 
-**Solutions**:
-1. Verify PostgreSQL is running: `systemctl status postgresql`
-2. Check credentials in .env
-3. Test connection: `psql -h $DB_HOST -U $DB_USER -d $DB_NAME`
-4. Check firewall rules
+Check TRX balance:
+```python
+balance = manager.client.get_balance()
+print(f"Balance: {balance / 1_000_000} TRX")
+```
 
 ## Production Deployment
 
-### Docker Compose
+1. Use managed PostgreSQL (AWS RDS, etc.)
+2. Deploy indexer as systemd service
+3. Use process manager (PM2, supervisord)
+4. Setup monitoring (Prometheus, Grafana)
+5. Configure log rotation
+6. Enable SSL/TLS for API
+7. Setup backup strategy
+8. Use hardware wallet for private keys
 
-```yaml
-version: '3.8'
+## Resources
 
-services:
-  postgres:
-    image: postgres:13
-    environment:
-      POSTGRES_DB: dcmx
-      POSTGRES_USER: dcmx
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-  
-  indexer:
-    build: .
-    command: python scripts/start_indexer.py
-    environment:
-      TRON_NETWORK: ${TRON_NETWORK}
-      TRON_PRIVATE_KEY: ${TRON_PRIVATE_KEY}
-      DB_HOST: postgres
-    depends_on:
-      - postgres
-    restart: unless-stopped
-  
-  api:
-    build: .
-    command: uvicorn dcmx.api.server:app --host 0.0.0.0 --port 8000
-    ports:
-      - "8000:8000"
-    environment:
-      TRON_NETWORK: ${TRON_NETWORK}
-      DB_HOST: postgres
-    depends_on:
-      - postgres
-      - indexer
-    restart: unless-stopped
-
-volumes:
-  postgres_data:
-```
-
-### Kubernetes Deployment
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: dcmx-indexer
-spec:
-  replicas: 1
-  template:
-    spec:
-      containers:
-      - name: indexer
-        image: dcmx/indexer:latest
-        env:
-        - name: TRON_NETWORK
-          value: mainnet
-        - name: DB_HOST
-          value: postgres-service
-        - name: TRON_PRIVATE_KEY
-          valueFrom:
-            secretKeyRef:
-              name: tron-credentials
-              key: private-key
-```
-
-## Best Practices
-
-1. **Environment Separation**: Use separate networks for dev/staging/prod
-2. **Key Management**: Store private keys in secure vaults (AWS Secrets Manager, HashiCorp Vault)
-3. **Monitoring**: Set up alerts for indexer lag, failed transactions, low balances
-4. **Backups**: Regular database backups with point-in-time recovery
-5. **Rate Limiting**: Use API keys and implement rate limiting
-6. **Error Handling**: Implement retry logic with exponential backoff
-7. **Logging**: Structured logging with correlation IDs
-8. **Testing**: Comprehensive test coverage before mainnet deployment
+- Web3 Architecture: docs/WEB3_ARCHITECTURE.md
+- Smart Contracts: docs/SMART_CONTRACTS.md
+- Event Indexing: docs/EVENT_INDEXING.md

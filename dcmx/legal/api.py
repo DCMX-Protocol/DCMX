@@ -18,6 +18,26 @@ legal_bp = Blueprint('legal', __name__, url_prefix='/api/legal')
 # Initialize tracker
 acceptance_tracker = AcceptanceTracker()
 
+# Blockchain integration (optional, initialized on first use)
+_contract_manager = None
+
+def get_contract_manager():
+    """Get or initialize contract manager."""
+    global _contract_manager
+    if _contract_manager is None:
+        try:
+            from dcmx.tron.contracts import ContractManager
+            from dcmx.tron.config import TronConfig
+            config = TronConfig.from_env()
+            if config.compliance_registry_address:
+                _contract_manager = ContractManager(config)
+                logger.info("Blockchain compliance integration enabled")
+            else:
+                logger.warning("Compliance registry address not configured")
+        except Exception as e:
+            logger.error(f"Failed to initialize blockchain integration: {e}")
+    return _contract_manager
+
 # Load document content
 TERMS_PATH = Path(__file__).parent.parent.parent / "docs" / "TERMS_AND_CONDITIONS.md"
 PRIVACY_PATH = Path(__file__).parent.parent.parent / "docs" / "PRIVACY_POLICY.md"
@@ -184,7 +204,7 @@ async def accept_document():
     Request JSON:
     {
         "user_id": "user123",
-        "wallet_address": "0x...",
+        "wallet_address": "T...",
         "document_type": "terms_and_conditions",
         "version": "1.0",
         "ip_address": "1.2.3.4",
@@ -203,7 +223,7 @@ async def accept_document():
                 'required': required
             }), 400
         
-        # Record acceptance
+        # Record acceptance in file storage
         record = await acceptance_tracker.record_acceptance(
             user_id=data['user_id'],
             wallet_address=data['wallet_address'],
@@ -216,11 +236,52 @@ async def accept_document():
             document_content=get_document_content(data['document_type'])
         )
         
-        return jsonify({
+        response_data = {
             'status': 'success',
             'message': 'Document acceptance recorded',
             'acceptance_record': record.to_dict()
-        }), 200
+        }
+        
+        # Also record on blockchain if available
+        contract_manager = get_contract_manager()
+        if contract_manager and contract_manager.compliance:
+            try:
+                from dcmx.tron import utils
+                
+                # Get document type enum
+                doc_type_map = {
+                    'terms_and_conditions': 0,
+                    'privacy_policy': 1,
+                    'cookie_policy': 2,
+                    'nft_agreement': 3,
+                    'risk_disclosure': 4,
+                }
+                doc_type = doc_type_map.get(data['document_type'].lower(), 0)
+                
+                # Compute document hash
+                doc_content = get_document_content(data['document_type'])
+                doc_hash = utils.compute_document_hash(doc_content)
+                
+                # Record on blockchain
+                result = contract_manager.compliance.record_acceptance(
+                    user_address=data['wallet_address'],
+                    document_hash=doc_hash,
+                    document_type=doc_type,
+                    version=data['version'],
+                    ip_address=utils.compute_document_hash(data.get('ip_address', 'unknown'))
+                )
+                
+                if result.success:
+                    response_data['blockchain_tx'] = result.transaction_hash
+                    logger.info(f"Acceptance recorded on blockchain: {result.transaction_hash}")
+                else:
+                    logger.warning(f"Blockchain recording failed: {result.error}")
+                    
+            except Exception as e:
+                logger.error(f"Blockchain integration error: {e}")
+                # Don't fail the request if blockchain fails
+        
+        return jsonify(response_data), 200
     
     except Exception as e:
         logger.error(f"Error recording acceptance: {e}")
@@ -415,6 +476,103 @@ def validate():
         logger.error(f"Error validating documents: {e}")
         return jsonify({
             'error': 'Validation failed',
+            'details': str(e)
+        }), 500
+
+
+@legal_bp.route('/blockchain/verify/<wallet_address>', methods=['GET'])
+def verify_blockchain_compliance(wallet_address: str):
+    """
+    Verify user's compliance acceptance on blockchain.
+    
+    Query params:
+    - document_type: Type of document (0-4)
+    - document_hash: Hash of document to verify
+    """
+    try:
+        contract_manager = get_contract_manager()
+        if not contract_manager or not contract_manager.compliance:
+            return jsonify({
+                'error': 'Blockchain integration not available'
+            }), 503
+        
+        document_type = request.args.get('document_type', type=int, default=0)
+        document_hash = request.args.get('document_hash')
+        
+        if not document_hash:
+            return jsonify({
+                'error': 'document_hash required'
+            }), 400
+        
+        # Verify on blockchain
+        verified = contract_manager.compliance.verify_acceptance(
+            user_address=wallet_address,
+            document_type=document_type,
+            document_hash=document_hash
+        )
+        
+        return jsonify({
+            'wallet_address': wallet_address,
+            'document_type': document_type,
+            'document_hash': document_hash,
+            'verified': verified,
+            'source': 'blockchain'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Blockchain verification error: {e}")
+        return jsonify({
+            'error': 'Verification failed',
+            'details': str(e)
+        }), 500
+
+
+@legal_bp.route('/blockchain/request-deletion', methods=['POST'])
+def request_blockchain_deletion():
+    """
+    Request data deletion on blockchain (GDPR/CCPA).
+    
+    Request JSON:
+    {
+        "wallet_address": "T...",
+        "reason": "GDPR right to deletion"
+    }
+    """
+    try:
+        data = request.get_json()
+        wallet_address = data.get('wallet_address')
+        reason = data.get('reason', 'User requested deletion')
+        
+        if not wallet_address:
+            return jsonify({'error': 'wallet_address required'}), 400
+        
+        contract_manager = get_contract_manager()
+        if not contract_manager or not contract_manager.compliance:
+            return jsonify({
+                'error': 'Blockchain integration not available'
+            }), 503
+        
+        # Request deletion on blockchain
+        result = contract_manager.compliance.request_data_deletion(reason)
+        
+        if result.success:
+            return jsonify({
+                'status': 'success',
+                'message': 'Deletion request recorded on blockchain',
+                'transaction_hash': result.transaction_hash,
+                'note': 'Blockchain data is immutable. Request has been recorded for compliance purposes.'
+            }), 200
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to record deletion request',
+                'error': result.error
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Blockchain deletion request error: {e}")
+        return jsonify({
+            'error': 'Request failed',
             'details': str(e)
         }), 500
 

@@ -2,404 +2,453 @@
 
 ## Overview
 
-DCMX implements an enterprise-grade Web3 architecture that combines TRON blockchain (source of truth) with PostgreSQL indexing for scalability and performance. This hybrid approach provides the benefits of decentralization while maintaining query performance for user-facing features.
+DCMX implements a complete Web3 architecture combining TRON blockchain smart contracts with PostgreSQL indexing for a production-grade decentralized music platform.
 
-## Architecture Diagram
+## Architecture Components
 
 ```
-┌─────────────────────────────────────────┐
-│   DCMX Frontend / Mobile App            │
-└────────────────┬────────────────────────┘
-                 │
-        ┌────────┴────────┐
-        │                 │
-   ┌────▼─────┐      ┌────▼──────┐
-   │ FastAPI  │      │ Flask API  │
-   │ /api/v1/ │      │ /legal/    │
-   └────┬─────┘      └────┬───────┘
-        │                 │
-        └────────┬────────┘
-                 │
-        ┌────────▼──────────────┐
-        │  TRON Client Wrapper  │
-        │  (dcmx/tron/client.py)│
-        └────────┬──────────────┘
-                 │
-    ┌────────────▼──────────────────┐
-    │     TRON BLOCKCHAIN            │
-    │     (Source of Truth)          │
-    ├────────────────────────────────┤
-    │  ├─ DCMXToken (TRC-20)         │
-    │  ├─ MusicNFT (TRC-721)         │
-    │  ├─ ComplianceRegistry         │
-    │  ├─ RewardVault                │
-    │  └─ RoyaltyDistributor         │
-    └────────────┬───────────────────┘
-                 │ (Events)
-        ┌────────▼──────────────┐
-        │  Event Indexer Daemon │
-        │  (scripts/start_indexer.py)│
-        └────────┬──────────────┘
-                 │
-        ┌────────▼──────────────┐
-        │  PostgreSQL Index DB  │
-        │  (Fast Queries)        │
-        ├───────────────────────┤
-        │  - blockchain_events  │
-        │  - user_profiles      │
-        │  - nft_index          │
-        │  - reward_claims      │
-        │  - transaction_index  │
-        │  - compliance_index   │
-        │  - analytics          │
-        └───────────────────────┘
+┌─────────────────────────────┐
+│   Frontend / Mobile App     │
+│   - Web3 Wallet Integration │
+│   - NFT Marketplace         │
+│   - Reward Dashboard        │
+└────────────┬────────────────┘
+             │
+    ┌────────▼──────────┐
+    │  FastAPI Server   │
+    │  /api/v1/*        │
+    │  - NFT Endpoints  │
+    │  - Rewards API    │
+    │  - Compliance API │
+    └────────┬──────────┘
+             │
+    ┌────────▼──────────────┐
+    │   TRON Client Layer   │
+    │  - Contract Calls     │
+    │  - Event Listening    │
+    │  - Transaction Mgmt   │
+    └────────┬──────────────┘
+             │
+  ┌──────────▼───────────────┐
+  │   TRON BLOCKCHAIN        │
+  ├──────────────────────────┤
+  │ • DCMXToken (TRC-20)     │
+  │ • MusicNFT (TRC-721)     │
+  │ • ComplianceRegistry     │
+  │ • RewardVault            │
+  │ • RoyaltyDistributor     │
+  └──────────┬───────────────┘
+             │
+  ┌──────────▼────────────────┐
+  │ Event Indexer Daemon      │
+  │  - Real-time event sync   │
+  │  - Batch processing       │
+  │  - Chain reorg handling   │
+  └──────────┬────────────────┘
+             │
+  ┌──────────▼────────────────┐
+  │  PostgreSQL Database      │
+  ├──────────────────────────┤
+  │ • blockchain_events       │
+  │ • user_profiles           │
+  │ • nft_index               │
+  │ • reward_claims_index     │
+  │ • transaction_index       │
+  │ • compliance_index        │
+  │ • analytics               │
+  └───────────────────────────┘
 ```
 
-## Design Principles
+## Key Design Principles
 
 ### 1. Blockchain as Source of Truth
 
-All critical state changes are written to TRON smart contracts:
-- **Token transfers** → DCMXToken contract
-- **NFT minting/transfers** → MusicNFT contract
-- **Legal acceptances** → ComplianceRegistry contract
-- **Reward claims** → RewardVault contract
-- **Royalty payments** → RoyaltyDistributor contract
+All critical operations are recorded on the TRON blockchain:
+- NFT ownership and transfers
+- Token rewards distribution
+- Legal compliance acceptances
+- Royalty payments
 
-### 2. PostgreSQL for Query Performance
+This ensures:
+- **Immutability**: Records cannot be altered
+- **Transparency**: All transactions are publicly verifiable
+- **Decentralization**: No single point of control
+- **Trust**: Cryptographic verification of all operations
 
-Blockchain events are indexed to PostgreSQL for:
-- Fast queries (milliseconds vs. seconds)
-- Complex filtering and aggregations
-- Full-text search
-- Analytics and dashboards
-- Reduced blockchain API calls
+### 2. Database for Performance
+
+PostgreSQL indexes blockchain data for efficient queries:
+- Fast NFT searches by artist, genre, etc.
+- User transaction history
+- Analytics and trending
+- Real-time dashboard updates
+
+Benefits:
+- **Speed**: Sub-second query response times
+- **Flexibility**: Complex SQL queries for analytics
+- **Scalability**: Handle millions of transactions
+- **Cost**: Cheaper than blockchain queries
 
 ### 3. Event-Driven Synchronization
 
-The Event Indexer Daemon:
-- Monitors smart contract events in real-time
-- Parses and validates event data
-- Updates PostgreSQL index tables
-- Handles chain reorganizations
-- Provides fault tolerance
+The indexer daemon continuously monitors blockchain events:
+- Listens to smart contract events
+- Indexes events to database in real-time
+- Handles blockchain reorganizations
+- Maintains data consistency
 
-## Component Details
+## Smart Contract Architecture
 
-### TRON Layer (`dcmx/tron/`)
+### DCMXToken (TRC-20)
 
-#### Client (`client.py`)
-- Wraps tronpy library for simplified blockchain interaction
-- Manages wallet connections and transaction signing
-- Provides retry logic and error handling
-- Supports both mainnet and testnet (Shasta/Nile)
-
-#### Contracts (`contracts.py`)
-- High-level interfaces for each smart contract
-- Type-safe function calls with validation
-- Automatic gas estimation
-- Event parsing and filtering
-
-#### Events (`events.py`)
-- Typed event definitions (dataclasses)
-- Event parsing from raw blockchain data
-- Event filtering and transformation
-
-#### Config (`config.py`)
-- Network configuration (mainnet/testnet)
-- Contract address management
-- API key handling
-
-### Database Layer (`dcmx/database/`)
-
-#### Models (`models.py`)
-- SQLAlchemy ORM models for all indexed data
-- Proper indexing for query performance
-- Relationships between entities
-- GDPR-compliant soft deletes
-
-#### Database (`database.py`)
-- Connection pooling and management
-- Session lifecycle handling
-- Transaction management
-- Connection health checks
-
-#### Sync (`sync.py`)
-- Blockchain-to-database synchronization
-- Event parsing and indexing
-- Batch processing for efficiency
-- Resumable syncing from last block
-
-#### Queries (`queries.py`)
-- Common query helpers
-- Optimized query patterns
-- Pagination support
-- Aggregations and analytics
-
-### Smart Contracts (`dcmx/tron/contracts/`)
-
-#### DCMXToken.sol (TRC-20)
-**Purpose**: Platform utility token for rewards and governance
+**Purpose**: Utility token for platform operations
 
 **Features**:
-- Fixed maximum supply (configurable)
-- Minting for reward claims (controlled by RewardVault)
-- Burning for platform fees
-- 18 decimals standard
+- Fixed supply: 1 billion tokens
+- Mint/burn capabilities (admin only)
+- Standard TRC-20 interface
+- Used for rewards and platform fees
 
 **Key Functions**:
-- `transfer(to, amount)` - Transfer tokens
-- `mint(to, amount)` - Mint new tokens (minters only)
-- `burn(amount)` - Burn tokens
-- `addMinter(address)` - Add authorized minter (owner only)
+- `transfer(to, amount)`: Transfer tokens
+- `approve(spender, amount)`: Approve spending
+- `mint(to, amount)`: Mint new tokens (admin)
+- `burn(amount)`: Burn tokens
 
-#### MusicNFT.sol (TRC-721)
-**Purpose**: Music rights NFTs with metadata and edition tracking
+### MusicNFT (TRC-721)
+
+**Purpose**: Represent music tracks as unique NFTs
 
 **Features**:
-- Unique music NFTs with rich metadata
-- Edition tracking (1 of 100, etc.)
-- ERC-2981 royalty standard support
-- IPFS/Arweave metadata storage
+- Limited edition support
+- Built-in royalty tracking (ERC-2981 compatible)
+- Content hash for integrity verification
+- Edition numbering (e.g., "1 of 100")
 
 **Key Functions**:
-- `mintMusic(to, title, artist, contentHash, edition, maxEditions, royaltyBps)` - Mint NFT
-- `getMetadata(tokenId)` - Get NFT metadata
-- `royaltyInfo(tokenId, salePrice)` - Get royalty information
-- `transferFrom(from, to, tokenId)` - Transfer NFT
+- `mint(...)`: Create new music NFT
+- `transfer(to, tokenId)`: Transfer NFT
+- `tokenMetadata(tokenId)`: Get NFT details
+- `royaltyInfo(tokenId, salePrice)`: Calculate royalty
 
-#### ComplianceRegistry.sol
-**Purpose**: Immutable legal document acceptance tracking
+### ComplianceRegistry
+
+**Purpose**: GDPR/CCPA compliance tracking
 
 **Features**:
-- Document version control with hashing
-- Acceptance records linked to wallet addresses
-- GDPR/CCPA deletion request tracking
-- Immutable audit trail on blockchain
+- Immutable acceptance records
+- Document version management
+- Data deletion requests
+- Audit trail
 
 **Key Functions**:
-- `registerDocumentVersion(docType, version, hash)` - Register document (owner)
-- `recordAcceptance(docType, version, hash, ipAddress)` - Record acceptance
-- `hasAccepted(wallet, docType, version)` - Check acceptance status
-- `requestDeletion(requestType)` - Request data deletion
+- `recordAcceptance(...)`: Record user acceptance
+- `requestDataDeletion(reason)`: Request deletion
+- `verifyAcceptance(...)`: Verify past acceptance
+- `getAuditTrail(user)`: Get full audit history
 
-#### RewardVault.sol
-**Purpose**: Decentralized reward distribution system
+### RewardVault
+
+**Purpose**: Manage token reward distribution
 
 **Features**:
-- Separate reward pools (sharing, listening, bandwidth, voting, referral)
-- Claim verification by authorized verifiers
-- Daily limits per user and pool
-- Anti-gaming mechanisms
+- Three reward pools (Sharing, Listening, Bandwidth)
+- Proof-based claim verification
+- Automatic token minting
+- Anti-fraud protection
 
 **Key Functions**:
-- `submitClaim(rewardType, amount, proofHash)` - Submit reward claim
-- `verifyClaim(claimId, approved)` - Verify claim (verifier only)
-- `getPoolStatus(rewardType)` - Get pool status
-- `addVerifier(address)` - Add authorized verifier (owner)
+- `submitClaim(type, proof, amount)`: Submit claim
+- `verifyClaim(claimId, approved)`: Verify claim (admin)
+- `claimRewards(claimId)`: Claim tokens
+- `getUserRewards(user)`: Get user's rewards
 
-#### RoyaltyDistributor.sol
-**Purpose**: Automatic artist royalty distribution
+### RoyaltyDistributor
+
+**Purpose**: Automate royalty payments
 
 **Features**:
-- NFT sale tracking with royalty calculation
-- Automatic royalty splits for collaborations
-- Payment processing in TRX or tokens
-- Platform fee collection
+- Multi-recipient splits
+- Automatic calculation
+- Withdraw mechanism
+- Sale tracking
 
 **Key Functions**:
-- `recordSale(tokenId, seller, buyer, salePrice, paymentToken)` - Record sale
-- `payRoyalty(saleId)` - Execute royalty payment
-- `setRoyaltySplits(tokenId, recipients, shares)` - Configure splits
-- `totalRoyaltiesEarned(artist)` - Get artist earnings
+- `recordSale(...)`: Record NFT sale
+- `distributeRoyalties(saleId)`: Distribute royalties
+- `withdrawRoyalties()`: Withdraw pending royalties
+- `getRoyaltyInfo(nftTokenId)`: Get royalty config
+
+## Database Schema
+
+### Core Tables
+
+**blockchain_events**
+- Indexes all smart contract events
+- Used for audit and debugging
+- Enables event replay
+
+**user_profiles**
+- User wallet addresses
+- KYC verification status
+- Privacy preferences
+
+**nft_index**
+- NFT metadata cache
+- Owner tracking
+- Fast artist/genre searches
+
+**reward_claims_index**
+- Reward claim history
+- Status tracking
+- User reward totals
+
+**transaction_index**
+- Transaction history
+- Balance calculations
+- Activity analytics
+
+**compliance_index**
+- Legal acceptance records
+- Deletion requests
+- Compliance audit logs
+
+**analytics**
+- Platform metrics
+- User statistics
+- Trending data
 
 ## Data Flow Examples
 
-### NFT Minting Flow
+### Example 1: NFT Minting
 
-```
-1. User calls mintMusic() on MusicNFT contract
-   ↓
-2. Transaction confirmed on TRON blockchain
-   ↓
-3. MusicMinted event emitted
-   ↓
-4. Event Indexer detects event
-   ↓
-5. Event parsed and stored in blockchain_events table
-   ↓
-6. NFT metadata indexed to nft_index table
-   ↓
-7. User profile updated (if needed)
-   ↓
-8. API queries return NFT from PostgreSQL
-```
+1. Artist calls API: `POST /api/v1/nft/mint`
+2. API validates request
+3. Contract call: `MusicNFT.mint(...)`
+4. Transaction broadcast to blockchain
+5. Event emitted: `Minted(to, tokenId, contentHash)`
+6. Indexer picks up event
+7. NFT metadata saved to `nft_index` table
+8. Event saved to `blockchain_events` table
+9. API returns transaction hash to artist
 
-### Reward Claim Flow
+### Example 2: Reward Claiming
 
-```
-1. User submits claim via submitClaim()
-   ↓
-2. Claim stored on-chain with proof hash
-   ↓
-3. Verifier calls verifyClaim(claimId, true)
-   ↓
-4. If approved, DCMXToken.mint() is called
-   ↓
-5. RewardClaimed event emitted
-   ↓
-6. Event indexed to reward_claims_index
-   ↓
-7. User balance updated in user_profiles
-```
+1. User submits claim: `POST /api/v1/reward/claim`
+2. API computes proof hash from data
+3. Contract call: `RewardVault.submitClaim(...)`
+4. Claim recorded on blockchain
+5. Event emitted: `ClaimSubmitted(claimId, user, ...)`
+6. Indexer saves claim to `reward_claims_index`
+7. Admin verifies claim: `RewardVault.verifyClaim(claimId, true)`
+8. User claims: `RewardVault.claimRewards(claimId)`
+9. DCMX tokens minted to user
+10. Event indexed: `RewardsClaimed(claimId, user, amount)`
 
-### Legal Acceptance Flow
+### Example 3: Compliance Acceptance
 
-```
-1. User accepts document via ComplianceRegistry
-   ↓
-2. recordAcceptance() writes hash to blockchain
-   ↓
-3. AcceptanceRecorded event emitted
-   ↓
-4. Event indexed to compliance_index
-   ↓
-5. API can query acceptance status instantly
-```
+1. User accepts terms: `POST /api/legal/accept`
+2. Document hash computed
+3. Contract call: `ComplianceRegistry.recordAcceptance(...)`
+4. Acceptance recorded immutably on blockchain
+5. Event emitted: `AcceptanceRecorded(user, docType, ...)`
+6. Indexer saves to `compliance_index`
+7. Acceptance can be verified anytime via blockchain
 
-## Deployment
+## Performance Optimizations
 
-### Prerequisites
-- PostgreSQL 13+ database
-- TRON wallet with TRX for gas fees
-- Python 3.8+ environment
+### 1. Read from Database, Write to Blockchain
 
-### Setup Steps
-
-1. **Install Dependencies**
-```bash
-pip install -r requirements.txt
-```
-
-2. **Configure Environment**
-```bash
-# TRON Configuration
-export TRON_NETWORK=shasta  # or mainnet
-export TRON_PRIVATE_KEY=your_private_key
-export TRONGRID_API_KEY=your_api_key
-
-# Database Configuration
-export DB_HOST=localhost
-export DB_PORT=5432
-export DB_NAME=dcmx
-export DB_USER=dcmx
-export DB_PASSWORD=secure_password
-```
-
-3. **Deploy Smart Contracts**
-```bash
-python scripts/deploy_contracts.py
-```
-
-4. **Initialize Database**
-```bash
-python scripts/initialize_db.py
-```
-
-5. **Start Event Indexer**
-```bash
-python scripts/start_indexer.py --poll-interval 30
-```
-
-## Monitoring
-
-### Key Metrics
-
-- **Blockchain**: Block height, transaction count, event count
-- **Database**: Index lag, query performance, table sizes
-- **Indexer**: Sync speed, error rate, uptime
-
-### Health Checks
+**Pattern**: Query indexed data for reads, use blockchain for writes
 
 ```python
-from dcmx.tron.client import TronClient
-from dcmx.database.database import test_connection
+# Fast read from database
+nfts = session.query(NFTIndex).filter(artist="ArtistName").all()
 
-# Check TRON connection
-client = TronClient()
-is_connected = client.is_connected()
+# Write to blockchain
+result = nft_contract.mint(...)
+```
 
-# Check database connection
-db_healthy = test_connection()
+### 2. Batch Event Processing
+
+**Pattern**: Process multiple blocks in batches
+
+```python
+# Efficient batch processing
+for block_num in range(start_block, end_block, batch_size):
+    events = get_events_batch(block_num, batch_size)
+    save_to_database(events)
+```
+
+### 3. Caching Hot Data
+
+**Pattern**: Cache frequently accessed data in Redis
+
+```python
+# Cache NFT metadata
+redis.setex(f"nft:{token_id}", 3600, nft_metadata)
+```
+
+### 4. Connection Pooling
+
+**Pattern**: Reuse database connections
+
+```python
+# SQLAlchemy connection pool
+engine = create_engine(
+    database_url,
+    pool_size=10,
+    max_overflow=20
+)
 ```
 
 ## Security Considerations
 
-1. **Private Key Management**
-   - Never commit private keys to git
-   - Use environment variables or key vaults
-   - Rotate keys periodically
+### 1. Private Key Management
 
-2. **Database Security**
-   - Use encrypted connections (SSL)
-   - Implement role-based access control
-   - Regular backups with encryption
+- **Never** commit private keys to code
+- Use environment variables or secure vaults
+- Rotate keys periodically
+- Use different keys for testnet and mainnet
 
-3. **Smart Contract Security**
-   - Audited before mainnet deployment
-   - Multi-sig for admin functions
-   - Pausable contracts for emergency stops
+### 2. Input Validation
 
-4. **API Security**
-   - Rate limiting on endpoints
-   - Authentication for write operations
-   - Input validation and sanitization
+- Validate all API inputs
+- Sanitize user data
+- Check TRON address format
+- Verify proof hashes
 
-## Performance Optimization
+### 3. Rate Limiting
 
-### Blockchain Queries
-- Cache frequently accessed data
-- Use batch queries when possible
-- Implement query result pagination
+- Limit API requests per user
+- Throttle contract calls
+- Prevent spam attacks
 
-### Database Optimization
-- Proper indexing on query columns
-- Materialized views for complex analytics
-- Query optimization and EXPLAIN analysis
-- Connection pooling (10-20 connections)
+### 4. Access Control
 
-### Event Indexing
-- Batch event processing (100-200 per batch)
-- Parallel processing for multiple contracts
-- Checkpoint-based resumption after failures
+- Admin-only functions protected
+- Wallet signature verification
+- Role-based permissions
 
-## Troubleshooting
+### 5. Contract Audits
 
-### Common Issues
+- Audit contracts before mainnet deployment
+- Use established security firms
+- Bug bounty program
+- Regular security reviews
 
-**Event Indexer Not Syncing**
-- Check TRON connection: `client.is_connected()`
-- Verify contract addresses are set
-- Check database connection
-- Review indexer logs for errors
+## Monitoring & Observability
 
-**Missing Events**
-- Check block range in sync_events()
-- Verify event_server URL is correct
-- Check for chain reorganizations
-- Re-sync from specific block if needed
+### Metrics to Track
 
-**Slow Queries**
-- Analyze with EXPLAIN
-- Add missing indexes
-- Use query helpers from queries.py
-- Consider materialized views
+1. **Blockchain Metrics**
+   - Transaction success rate
+   - Average gas costs
+   - Block confirmation times
+   - Event indexing lag
+
+2. **Database Metrics**
+   - Query performance
+   - Index efficiency
+   - Connection pool usage
+   - Storage growth
+
+3. **API Metrics**
+   - Request latency
+   - Error rates
+   - Active users
+   - Peak traffic times
+
+4. **Business Metrics**
+   - NFTs minted
+   - Rewards distributed
+   - Active wallets
+   - Transaction volume
+
+### Logging Strategy
+
+```python
+# Structured logging
+logger.info(
+    "NFT minted",
+    extra={
+        "token_id": token_id,
+        "artist": artist,
+        "tx_hash": tx_hash,
+        "gas_used": gas_used
+    }
+)
+```
+
+## Deployment Checklist
+
+### Testnet Deployment (Shasta)
+
+- [ ] Deploy smart contracts
+- [ ] Verify contracts on TronScan
+- [ ] Initialize database
+- [ ] Start indexer daemon
+- [ ] Test API endpoints
+- [ ] Validate event indexing
+- [ ] Perform load testing
+
+### Mainnet Deployment
+
+- [ ] Complete security audit
+- [ ] Review all configurations
+- [ ] Setup monitoring/alerts
+- [ ] Deploy contracts to mainnet
+- [ ] Migrate historical data
+- [ ] Start indexer with correct start block
+- [ ] Monitor for first 24 hours
+- [ ] Announce to users
+
+## Disaster Recovery
+
+### Blockchain Failures
+
+- Blockchain data is immutable and replicated
+- Can re-sync from any block
+- Multiple RPC endpoints for redundancy
+
+### Database Failures
+
+- Regular backups (hourly/daily)
+- Point-in-time recovery
+- Can rebuild from blockchain events
+- Multi-region replication
+
+### Indexer Failures
+
+- Automatically resumes from last block
+- Handles chain reorganizations
+- Can replay events if needed
+- Health checks and auto-restart
 
 ## Future Enhancements
 
-1. **Layer 2 Scaling**: Integrate with TRON Layer 2 solutions
-2. **IPFS Integration**: Decentralized metadata storage
-3. **GraphQL API**: More flexible queries
-4. **Real-time Updates**: WebSocket subscriptions for live events
-5. **Cross-chain Bridge**: Support other blockchains (Ethereum, Polygon)
-6. **ZK Proofs**: Privacy-preserving reward claims
+1. **Multi-chain Support**
+   - Add Ethereum, Polygon, BNB Chain
+   - Cross-chain NFT bridges
+
+2. **Layer 2 Scaling**
+   - Use TRON DAppChain for high frequency operations
+   - Reduce transaction costs
+
+3. **Advanced Analytics**
+   - Machine learning for recommendations
+   - Price prediction models
+   - Fraud detection
+
+4. **Mobile SDKs**
+   - Native iOS/Android libraries
+   - In-app wallet integration
+   - Push notifications for events
+
+## Resources
+
+- **TRON Documentation**: https://developers.tron.network/
+- **TronPy Library**: https://tronpy.readthedocs.io/
+- **Smart Contract Standards**: See docs/SMART_CONTRACTS.md
+- **API Documentation**: See docs/BLOCKCHAIN_INTEGRATION.md
+- **Event Indexing**: See docs/EVENT_INDEXING.md

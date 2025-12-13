@@ -1,45 +1,39 @@
-"""
-DCMX TRON Blockchain Integration
+"""TRON blockchain integration for DCMX.
 
-This module provides integration with TRON blockchain for:
+This module provides TRON blockchain integration including:
 - Smart contract deployment and interaction
-- Event indexing and monitoring
-- Transaction management
-- Wallet integration
+- Event indexing and synchronization
+- Token and NFT management
+- Compliance registry integration
 """
 
-from .config import TronConfig, NetworkConfig, NETWORKS
 from .client import TronClient
+from .config import TronConfig, NetworkType
 from .contracts import (
     DCMXTokenContract,
     MusicNFTContract,
     ComplianceRegistryContract,
     RewardVaultContract,
     RoyaltyDistributorContract,
+    ContractManager,
 )
-from .events import (
-    TransferEvent,
-    MintEvent,
-    ApprovalEvent,
-    AcceptanceRecordedEvent,
-    RewardClaimedEvent,
-    SaleRecordedEvent,
-)
+from .events import EventType, EventParser, BlockchainEvent
+from .indexer import BlockchainIndexer
+from . import utils
 
 __all__ = [
-    "TronConfig",
-    "NetworkConfig",
-    "NETWORKS",
     "TronClient",
+    "TronConfig",
+    "NetworkType",
     "DCMXTokenContract",
     "MusicNFTContract",
     "ComplianceRegistryContract",
     "RewardVaultContract",
     "RoyaltyDistributorContract",
-    "TransferEvent",
-    "MintEvent",
-    "ApprovalEvent",
-    "AcceptanceRecordedEvent",
-    "RewardClaimedEvent",
-    "SaleRecordedEvent",
+    "ContractManager",
+    "EventType",
+    "EventParser",
+    "BlockchainEvent",
+    "BlockchainIndexer",
+    "utils",
 ]

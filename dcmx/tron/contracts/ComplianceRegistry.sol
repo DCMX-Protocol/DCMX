@@ -3,16 +3,16 @@ pragma solidity ^0.8.0;
 
 /**
  * @title ComplianceRegistry
- * @dev Immutable Legal Acceptance Tracking on TRON
+ * @dev Blockchain-based compliance tracking for GDPR/CCPA
  * 
  * Features:
- * - Immutable acceptance records (hash-based)
- * - Document version control
- * - User data deletion requests (GDPR/CCPA)
- * - Compliance audit trail with blockchain timestamps
+ * - Immutable acceptance records
+ * - Document version management
+ * - Data deletion requests with timestamps
+ * - Audit trail for regulatory compliance
  */
 contract ComplianceRegistry {
-    address public owner;
+    address public admin;
     
     enum DocumentType {
         TERMS_AND_CONDITIONS,
@@ -23,258 +23,173 @@ contract ComplianceRegistry {
     }
     
     struct AcceptanceRecord {
-        address wallet;
-        bytes32 documentHash;  // SHA-256 hash of document content
-        string documentVersion;
-        DocumentType docType;
-        uint256 acceptedAt;
-        string ipAddress;  // Can be encrypted off-chain
+        bytes32 documentHash;
+        DocumentType documentType;
+        string version;
+        uint256 timestamp;
+        string ipAddress;  // Hashed in production
         bool isValid;
     }
     
     struct DeletionRequest {
-        address wallet;
-        uint256 requestedAt;
-        uint256 completedAt;
-        bool isCompleted;
-        string requestType;  // "GDPR" or "CCPA"
+        uint256 timestamp;
+        string reason;
+        bool processed;
+        uint256 processedAt;
     }
     
-    // Wallet => Document Type => Latest Acceptance Record ID
-    mapping(address => mapping(DocumentType => uint256)) public latestAcceptance;
+    // User address => Document type => Acceptance records
+    mapping(address => mapping(DocumentType => AcceptanceRecord[])) public acceptances;
     
-    // Unique acceptance record ID => AcceptanceRecord
-    mapping(uint256 => AcceptanceRecord) public acceptances;
-    uint256 private _acceptanceCounter;
-    
-    // Wallet => Deletion Request
+    // User address => Deletion request
     mapping(address => DeletionRequest) public deletionRequests;
     
-    // Document Type => Version => Hash
-    mapping(DocumentType => mapping(string => bytes32)) public documentHashes;
+    // Document type => Version => Document hash
+    mapping(DocumentType => mapping(string => bytes32)) public documentVersions;
     
     event AcceptanceRecorded(
-        uint256 indexed recordId,
-        address indexed wallet,
-        DocumentType indexed docType,
-        string version,
+        address indexed user,
+        DocumentType indexed documentType,
         bytes32 documentHash,
+        string version,
         uint256 timestamp
     );
     
     event DeletionRequested(
-        address indexed wallet,
-        string requestType,
+        address indexed user,
+        uint256 timestamp,
+        string reason
+    );
+    
+    event DeletionProcessed(
+        address indexed user,
         uint256 timestamp
     );
     
-    event DeletionCompleted(
-        address indexed wallet,
-        uint256 completedAt
-    );
-    
     event DocumentVersionRegistered(
-        DocumentType indexed docType,
+        DocumentType indexed documentType,
         string version,
         bytes32 documentHash
     );
     
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Only admin");
         _;
     }
     
     constructor() {
-        owner = msg.sender;
+        admin = msg.sender;
     }
     
-    /**
-     * @dev Register a document version hash
-     * Only owner can register official document versions
-     */
     function registerDocumentVersion(
-        DocumentType docType,
+        DocumentType documentType,
         string memory version,
         bytes32 documentHash
-    ) external onlyOwner {
-        require(documentHashes[docType][version] == bytes32(0), "Version exists");
+    ) public onlyAdmin {
         require(documentHash != bytes32(0), "Invalid hash");
+        require(bytes(version).length > 0, "Invalid version");
         
-        documentHashes[docType][version] = documentHash;
-        emit DocumentVersionRegistered(docType, version, documentHash);
+        documentVersions[documentType][version] = documentHash;
+        
+        emit DocumentVersionRegistered(documentType, version, documentHash);
     }
     
-    /**
-     * @dev Record user acceptance of a legal document
-     */
     function recordAcceptance(
-        DocumentType docType,
-        string memory version,
+        address user,
         bytes32 documentHash,
+        DocumentType documentType,
+        string memory version,
         string memory ipAddress
-    ) external {
-        require(documentHashes[docType][version] == documentHash, "Document hash mismatch");
+    ) public onlyAdmin {
+        require(user != address(0), "Invalid user");
+        require(documentHash != bytes32(0), "Invalid hash");
+        require(
+            documentVersions[documentType][version] == documentHash,
+            "Document hash mismatch"
+        );
         
-        _acceptanceCounter++;
-        uint256 recordId = _acceptanceCounter;
-        
-        acceptances[recordId] = AcceptanceRecord({
-            wallet: msg.sender,
+        AcceptanceRecord memory record = AcceptanceRecord({
             documentHash: documentHash,
-            documentVersion: version,
-            docType: docType,
-            acceptedAt: block.timestamp,
+            documentType: documentType,
+            version: version,
+            timestamp: block.timestamp,
             ipAddress: ipAddress,
             isValid: true
         });
         
-        latestAcceptance[msg.sender][docType] = recordId;
+        acceptances[user][documentType].push(record);
         
         emit AcceptanceRecorded(
-            recordId,
-            msg.sender,
-            docType,
-            version,
+            user,
+            documentType,
             documentHash,
+            version,
             block.timestamp
         );
     }
     
-    /**
-     * @dev Get latest acceptance for a user and document type
-     */
-    function getLatestAcceptance(address wallet, DocumentType docType) 
-        external 
-        view 
-        returns (
-            uint256 recordId,
-            bytes32 documentHash,
-            string memory version,
-            uint256 acceptedAt,
-            bool isValid
-        ) 
-    {
-        recordId = latestAcceptance[wallet][docType];
-        require(recordId > 0, "No acceptance found");
-        
-        AcceptanceRecord memory record = acceptances[recordId];
-        return (
-            recordId,
-            record.documentHash,
-            record.documentVersion,
-            record.acceptedAt,
-            record.isValid
-        );
-    }
-    
-    /**
-     * @dev Check if user has accepted a document
-     */
-    function hasAccepted(
-        address wallet,
-        DocumentType docType,
-        string memory requiredVersion
-    ) external view returns (bool) {
-        uint256 recordId = latestAcceptance[wallet][docType];
-        if (recordId == 0) return false;
-        
-        AcceptanceRecord memory record = acceptances[recordId];
-        if (!record.isValid) return false;
-        
-        // Check if version matches (if specified)
-        if (bytes(requiredVersion).length > 0) {
-            return keccak256(bytes(record.documentVersion)) == keccak256(bytes(requiredVersion));
-        }
-        
-        return true;
-    }
-    
-    /**
-     * @dev Request data deletion (GDPR/CCPA)
-     * This creates an immutable record of the deletion request
-     * Actual data deletion happens off-chain with this timestamp as proof
-     */
-    function requestDeletion(string memory requestType) external {
-        require(
-            keccak256(bytes(requestType)) == keccak256(bytes("GDPR")) ||
-            keccak256(bytes(requestType)) == keccak256(bytes("CCPA")),
-            "Invalid request type"
-        );
-        require(deletionRequests[msg.sender].requestedAt == 0, "Request already exists");
+    function requestDataDeletion(string memory reason) public {
+        require(bytes(reason).length > 0, "Reason required");
+        require(!deletionRequests[msg.sender].processed, "Already processed");
         
         deletionRequests[msg.sender] = DeletionRequest({
-            wallet: msg.sender,
-            requestedAt: block.timestamp,
-            completedAt: 0,
-            isCompleted: false,
-            requestType: requestType
+            timestamp: block.timestamp,
+            reason: reason,
+            processed: false,
+            processedAt: 0
         });
         
-        emit DeletionRequested(msg.sender, requestType, block.timestamp);
+        emit DeletionRequested(msg.sender, block.timestamp, reason);
     }
     
-    /**
-     * @dev Mark deletion request as completed (admin only)
-     */
-    function completeDeletion(address wallet) external onlyOwner {
-        require(deletionRequests[wallet].requestedAt > 0, "No request found");
-        require(!deletionRequests[wallet].isCompleted, "Already completed");
+    function processDeletionRequest(address user) public onlyAdmin {
+        require(deletionRequests[user].timestamp > 0, "No request found");
+        require(!deletionRequests[user].processed, "Already processed");
         
-        deletionRequests[wallet].completedAt = block.timestamp;
-        deletionRequests[wallet].isCompleted = true;
+        deletionRequests[user].processed = true;
+        deletionRequests[user].processedAt = block.timestamp;
         
-        emit DeletionCompleted(wallet, block.timestamp);
+        emit DeletionProcessed(user, block.timestamp);
     }
     
-    /**
-     * @dev Invalidate an acceptance record (admin only, for data corrections)
-     */
-    function invalidateAcceptance(uint256 recordId) external onlyOwner {
-        require(acceptances[recordId].wallet != address(0), "Record not found");
-        acceptances[recordId].isValid = false;
+    function verifyAcceptance(
+        address user,
+        DocumentType documentType,
+        bytes32 documentHash
+    ) public view returns (bool) {
+        AcceptanceRecord[] memory records = acceptances[user][documentType];
+        
+        for (uint i = 0; i < records.length; i++) {
+            if (records[i].documentHash == documentHash && records[i].isValid) {
+                return true;
+            }
+        }
+        
+        return false;
     }
     
-    /**
-     * @dev Get deletion request status
-     */
-    function getDeletionRequest(address wallet) external view returns (
-        uint256 requestedAt,
-        uint256 completedAt,
-        bool isCompleted,
-        string memory requestType
-    ) {
-        DeletionRequest memory request = deletionRequests[wallet];
-        return (
-            request.requestedAt,
-            request.completedAt,
-            request.isCompleted,
-            request.requestType
-        );
+    function getAcceptanceCount(address user, DocumentType documentType)
+        public
+        view
+        returns (uint256)
+    {
+        return acceptances[user][documentType].length;
     }
     
-    /**
-     * @dev Get total number of acceptance records
-     */
-    function totalAcceptances() external view returns (uint256) {
-        return _acceptanceCounter;
+    function getAcceptance(
+        address user,
+        DocumentType documentType,
+        uint256 index
+    ) public view returns (AcceptanceRecord memory) {
+        require(index < acceptances[user][documentType].length, "Invalid index");
+        return acceptances[user][documentType][index];
     }
     
-    /**
-     * @dev Verify document hash matches registered version
-     */
-    function verifyDocumentHash(
-        DocumentType docType,
-        string memory version,
-        bytes32 providedHash
-    ) external view returns (bool) {
-        return documentHashes[docType][version] == providedHash;
-    }
-    
-    /**
-     * @dev Transfer ownership
-     */
-    function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "Invalid owner");
-        owner = newOwner;
+    function getAuditTrail(address user, DocumentType documentType)
+        public
+        view
+        returns (AcceptanceRecord[] memory)
+    {
+        return acceptances[user][documentType];
     }
 }
